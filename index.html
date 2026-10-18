@@ -183,6 +183,7 @@
             .zone { display: flex; flex-direction: column; min-height: 0; cursor: pointer; }
             .zone-top { flex: 1.35 1 0; padding: 6px 0 12px; }
             .zone-bottom { flex: 1 1 0; padding: 14px 0 16px; overflow-y: auto; }
+            .zone-top.no-img { justify-content: center; }
 
             .zone-divider { height: 1px; background: var(--divider); margin: 0 -18px; flex-shrink: 0; }
 
@@ -286,9 +287,9 @@
         </style>
     </head>
     <body>
-        <script src="data/Английский.js"></script>
-        <script src="data/Арабский.js"></script>
-        <script src="data/Китайский.js"></script>
+        <script src="data/Английский.js"></script>
+        <script src="data/Арабский.js"></script>
+        <script src="data/Китайский.js"></script>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
@@ -327,6 +328,16 @@
             let expandedGroups = new Set();
 
             function deckKey(group, deck) { return group + '::' + deck; }
+
+            // Случайный порядок карточек (Фишер-Йетс). Вызывается только когда оценок
+            // ещё нет, поэтому оценки (по номеру карточки) не путаются.
+            function shuffleDeck(group, deck) {
+                const cards = ALL_DECKS[group][deck];
+                for (let i = cards.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [cards[i], cards[j]] = [cards[j], cards[i]];
+                }
+            }
 
             function getResults() {
                 return deckResults[deckKey(currentGroupName, currentDeckName)];
@@ -543,6 +554,9 @@
                     deckResults[key] = new Array(ALL_DECKS[group][deck].length).fill(null);
                 }
 
+                // Зашли в колоду, где ещё ничего не оценено, — каждый раз новый порядок
+                if (deckResults[key].every(r => r === null)) shuffleDeck(group, deck);
+
                 const arr = deckResults[key];
                 const firstUnanswered = arr.findIndex(r => r === null);
                 renderSidebar();
@@ -598,7 +612,7 @@
                         <span class="card-counter">${currentCard + 1} из ${deck.length}</span>
                         <button class="mini-btn" onclick="goNext()" title="Пропустить без оценки">›</button>
                     </div>
-                    <div class="zone zone-top" id="zoneTop">
+                    <div class="zone zone-top ${card.image ? '' : 'no-img'}" id="zoneTop">
                         <p class="question-text ${cjkClass}" dir="${textDirection}">${card.question}</p>
                         ${topContent}
                     </div>
@@ -802,6 +816,7 @@
 
             function resetDeck() {
                 currentCard = 0;
+                shuffleDeck(currentGroupName, currentDeckName);
                 deckResults[deckKey(currentGroupName, currentDeckName)] = new Array(currentDeck().length).fill(null);
                 renderSidebar();
                 showCard();
@@ -822,6 +837,7 @@
             // ── Инициализация ──
             groupNames.forEach(group => {
                 Object.keys(ALL_DECKS[group]).forEach(deck => {
+                    shuffleDeck(group, deck);
                     deckResults[deckKey(group, deck)] = new Array(ALL_DECKS[group][deck].length).fill(null);
                 });
             });
