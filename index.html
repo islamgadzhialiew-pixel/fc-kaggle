@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Мои флеш-карточки 🎓</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        :root {
+            --bg: #131316;
+            --card-bg: #26262b;
+            --text-primary: #f2f2f4;
+            --text-secondary: #9a9aa2;
+            --accent-blue: #4d9dff;
+            --accent-red: #ff5a52;
+            --accent-green: #34d566;
+            --divider: #3a3a40;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .app {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+            height: 100vh;
+            height: 100dvh;   /* карточка занимает весь экран, кнопки всегда внизу */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .top-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-shrink: 0; }
+
+        .icon-btn {
+            background: none; border: none; color: var(--text-primary);
+            font-size: 24px; width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; border-radius: 50%; flex-shrink: 0; padding: 0;
+        }
+
+        .icon-btn:active { background: rgba(255,255,255,0.08); }
+
+        .top-title {
+            flex: 1; text-align: center; font-size: 18px; font-weight: 700;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px;
+        }
+
+        .icon-spacer { width: 40px; flex-shrink: 0; }
+
+        .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; }
+        .sidebar-overlay.open { display: block; }
+
+        .sidebar {
+            position: fixed; top: 0; left: 0; bottom: 0; width: 300px; max-width: 86vw;
+            background: #1c1c20; z-index: 101; transform: translateX(-100%);
+            transition: transform 0.25s ease-out; overflow-y: auto;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+        }
+
+        .sidebar.open { transform: translateX(0); }
+
+        .sidebar-header {
+            padding: 20px 16px; font-size: 16px; font-weight: 700;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--divider); position: sticky; top: 0;
+            background: #1c1c20; z-index: 2;
+        }
+
+        .sidebar-close {
+            background: rgba(255,255,255,0.08); border: none; color: var(--text-primary);
+            width: 30px; height: 30px; border-radius: 8px; font-size: 16px; cursor: pointer;
+        }
+
+        /* ── Группы (папки) ── */
+        .group-header {
+            display: flex; align-items: center;
+            padding: 0 8px 0 16px;
+            background: #202024; border-bottom: 1px solid var(--divider);
+            font-weight: 700; font-size: 14px;
+        }
+
+        .group-header-clickable {
+            display: flex; align-items: center; gap: 8px;
+            flex: 1; min-width: 0; padding: 14px 0; cursor: pointer;
+        }
+
+        .group-header-clickable:active { opacity: 0.7; }
+
+        .group-rename-btn {
+            background: none; border: none; color: var(--text-secondary);
+            font-size: 14px; padding: 8px; cursor: pointer; flex-shrink: 0; border-radius: 6px;
+        }
+
+        .group-rename-btn:active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+        .group-toggle-icon { color: var(--text-secondary); font-size: 11px; width: 12px; flex-shrink: 0; }
+
+        .group-count { color: var(--text-secondary); font-weight: 400; font-size: 12px; margin-left: auto; }
+
+        .group-decks { display: none; }
+        .group-decks.expanded { display: block; }
+
+        .deck-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px 12px 28px; cursor: pointer;
+            border-bottom: 1px solid #232328;
+        }
+
+        .deck-item:active, .deck-item.active { background: #232329; }
+        .deck-item.active { border-left: 3px solid var(--accent-blue); padding-left: 25px; }
+
+        .deck-thumb { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: #333; }
+        .deck-thumb-placeholder {
+            width: 44px; height: 44px; border-radius: 10px; background: #34343c;
+            display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0;
+        }
+
+        .deck-info { flex: 1; min-width: 0; }
+
+        .deck-name-row { display: flex; align-items: center; gap: 6px; }
+
+        .deck-name {
+            font-size: 13.5px; font-weight: 600; color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
+        }
+
+        .deck-rename-btn {
+            background: none; border: none; color: var(--text-secondary);
+            font-size: 13px; padding: 4px 6px; cursor: pointer; flex-shrink: 0; border-radius: 6px;
+        }
+
+        .deck-rename-btn:active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+        .deck-count { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+        .deck-progress-bar {
+            display: flex; height: 5px; border-radius: 3px; overflow: hidden;
+            background: #38383e; margin-top: 6px;
+        }
+
+        .deck-progress-bar .seg.correct { background: var(--accent-green); }
+        .deck-progress-bar .seg.incorrect { background: var(--accent-red); }
+        .deck-progress-bar .seg.remaining { background: transparent; }
+
+        /* ── Карточка ──
+           Сверху всегда текст на изучаемом языке.
+           Карточка разделена тонкой линией на две зоны:
+             верхняя — тап сразу показывает картинку и перевод,
+             нижняя — по шагам: 1-й тап картинка, 2-й тап перевод.
+           Свайп вправо — «знаю», влево — «не знаю». */
+        .card {
+            background: var(--card-bg); border-radius: 28px; padding: 14px 18px 0;
+            flex: 1; min-height: 0; display: flex; flex-direction: column;
+            position: relative; overflow: hidden;
+            touch-action: pan-y; user-select: none; -webkit-user-select: none;
+            will-change: transform;
+        }
+
+        .card.enter { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+        .card-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .card-counter { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
+
+        .mini-btn {
+            background: rgba(154,154,162,0.12); border: none; color: var(--text-secondary);
+            width: 34px; height: 34px; border-radius: 50%; font-size: 16px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .mini-btn:active { background: rgba(154,154,162,0.3); }
+        .mini-btn.disabled { opacity: 0.3; pointer-events: none; }
+
+        .zone { display: flex; flex-direction: column; min-height: 0; cursor: pointer; }
+        .zone-top { flex: 1.35 1 0; padding: 6px 0 12px; }
+        .zone-bottom { flex: 1 1 0; padding: 14px 0 16px; overflow-y: auto; }
+        .zone-top.no-img { justify-content: center; }
+
+        .zone-divider { height: 1px; background: var(--divider); margin: 0 -18px; flex-shrink: 0; }
+
+        .question-text {
+            font-size: 26px; font-weight: 600; line-height: 1.3; color: var(--text-primary);
+            text-align: center; padding: 6px 0; flex-shrink: 0;
+        }
+        .question-text[dir="rtl"] { font-size: 32px; line-height: 1.6; }
+        .question-text.cjk { font-size: 34px; letter-spacing: 1px; }
+
+        .image-slot { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; margin-top: 8px; }
+        .image-slot img {
+            max-width: 100%; max-height: 100%; border-radius: 16px; object-fit: contain;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        .zone-hint { color: #66666e; font-size: 14px; text-align: center; margin: auto; padding: 10px; }
+
+        .answer-text {
+            font-size: 21px; line-height: 1.4; color: var(--text-primary); text-align: center;
+            margin: auto 0; animation: fadeIn 0.25s ease-out;
+        }
+
+        /* Подсветка при свайпе */
+        .swipe-badge {
+            position: absolute; top: 18px; padding: 6px 14px; border-radius: 10px;
+            font-size: 18px; font-weight: 800; letter-spacing: 1px; opacity: 0;
+            pointer-events: none; border: 3px solid;
+        }
+        .swipe-badge.know { left: 18px; color: var(--accent-green); border-color: var(--accent-green); transform: rotate(-12deg); }
+        .swipe-badge.dont { right: 18px; color: var(--accent-red); border-color: var(--accent-red); transform: rotate(12deg); }
+
+        /* ── Нижняя панель: ✕  🔊  ✓ (под большим пальцем) ── */
+        .nav-row { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 14px; }
+
+        .act {
+            background: #1c1c20; border: 1.5px solid var(--divider); cursor: pointer;
+            height: 64px; border-radius: 32px; flex: 1; max-width: 140px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            font-size: 22px; font-weight: 700;
+        }
+        .act:active { background: #29292f; }
+        .act small { font-size: 15px; font-weight: 600; opacity: 0.8; }
+        .act-wrong { color: var(--accent-red); }
+        .act-right { color: var(--accent-green); }
+
+        .act-speak {
+            flex: 0 0 72px; height: 72px; border-radius: 50%;
+            background: rgba(77,157,255,0.15); border-color: rgba(77,157,255,0.35);
+            color: var(--accent-blue); font-size: 28px;
+        }
+        .act-speak:active, .act-speak.speaking { background: rgba(77,157,255,0.4); }
+
+        .progress-bar { width: 100%; height: 3px; background: #2a2a30; border-radius: 2px; margin-top: 14px; flex-shrink: 0; }
+        .progress-fill { height: 100%; background: var(--accent-blue); border-radius: 2px; transition: width 0.3s ease; }
+
+        .keyboard-hint { text-align: center; color: #55555c; font-size: 11px; margin-top: 10px; }
+
+        .results-title { text-align: center; font-size: 20px; color: var(--text-primary); margin-bottom: 22px; font-weight: 700; }
+        .results-summary { display: flex; justify-content: center; gap: 34px; margin-bottom: 28px; }
+        .results-stat { text-align: center; }
+        .results-stat-number { font-size: 34px; font-weight: 700; }
+        .results-stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .results-stat.correct .results-stat-number { color: var(--accent-green); }
+        .results-stat.incorrect .results-stat-number { color: var(--accent-red); }
+
+        .chart-bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .chart-bar-label { width: 80px; font-size: 13px; color: var(--text-secondary); text-align: right; flex-shrink: 0; }
+        .chart-bar-track { flex: 1; background: #2a2a30; border-radius: 10px; height: 24px; overflow: hidden; }
+        .chart-bar-fill {
+            height: 100%; border-radius: 10px; display: flex; align-items: center;
+            justify-content: flex-end; padding-right: 10px; color: #0c0c0e;
+            font-size: 12px; font-weight: 700; transition: width 0.6s ease; min-width: 28px;
+        }
+        .chart-bar-fill.correct { background: var(--accent-green); }
+        .chart-bar-fill.incorrect { background: var(--accent-red); }
+
+        .results-wrap { padding: 10px 0 18px; overflow-y: auto; }
+        .results-list { margin-top: 18px; max-height: 220px; overflow-y: auto; border-top: 1px solid var(--divider); padding-top: 10px; }
+        .results-list-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; color: var(--text-secondary); border-bottom: 1px solid #2a2a30; }
+
+        .reset-btn {
+            display: block; margin: 20px auto 0; background: var(--accent-blue); color: #0c0c0e;
+            border: none; padding: 12px 28px; border-radius: 24px; font-size: 15px; font-weight: 700; cursor: pointer;
+        }
+
+        .empty-state { text-align: center; color: var(--text-secondary); padding: 60px 20px; font-size: 15px; }
+
+        @media (max-width: 420px) {
+            .card { padding: 12px 14px 0; }
+            .zone-divider { margin: 0 -14px; }
+            .question-text { font-size: 22px; }
+            .question-text[dir="rtl"] { font-size: 28px; }
+            .question-text.cjk { font-size: 30px; }
+            .answer-text { font-size: 18px; }
+            .nav-row { gap: 12px; }
+            .act { height: 58px; }
+            .act-speak { flex-basis: 66px; height: 66px; }
+            .keyboard-hint { display: none !important; }
+        }
+
+        /* ── Повторение по интервалам: 4 кнопки оценки ── */
+        :root { --c-again: #ff5a52; --c-hard: #ffb43b; --c-good: #4d9dff; --c-easy: #34d566; }
+
+        .rate-row { display: flex; gap: 8px; margin-top: 10px; visibility: hidden; flex-shrink: 0; }
+        .rate-row.show { visibility: visible; }
+        .rate-btn {
+            flex: 1; min-width: 0; height: 42px; border-radius: 12px; background: #1c1c20;
+            border: 1.5px solid; cursor: pointer; font-size: 13px; font-weight: 700; line-height: 1.15;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 2px;
+        }
+        .rate-btn small { font-size: 10.5px; font-weight: 500; opacity: 0.85; }
+        .rate-btn:active { background: #2b2b32; }
+        .rate-btn.again { color: var(--c-again); border-color: var(--c-again); }
+        .rate-btn.hard  { color: var(--c-hard);  border-color: var(--c-hard); }
+        .rate-btn.good  { color: var(--c-good);  border-color: var(--c-good); }
+        .rate-btn.easy  { color: var(--c-easy);  border-color: var(--c-easy); }
+
+        .swipe-badge.know { color: var(--c-good); border-color: var(--c-good); }
+        .swipe-badge.dont { color: var(--c-hard); border-color: var(--c-hard); }
+        .act-wrong { color: var(--c-hard); }
+        .act-right { color: var(--c-good); }
+
+        .top-btns { display: flex; gap: 2px; flex-shrink: 0; }
+
+        /* ── Главный экран «Сегодня» ── */
+        .home { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 24px; -webkit-overflow-scrolling: touch; }
+        .home[hidden], .card[hidden], .nav-row[hidden], .progress-bar[hidden], .rate-row[hidden], .keyboard-hint[hidden] { display: none !important; }
+        .home-date { font-size: 13px; color: var(--text-secondary); margin: 2px 4px 10px; }
+        .home-banner {
+            background: rgba(77,157,255,0.12); border: 1px solid rgba(77,157,255,0.35); color: #b9d8ff;
+            border-radius: 14px; padding: 10px 14px; font-size: 14px; margin-bottom: 12px;
+        }
+        .sec { background: #1c1c20; border: 1px solid var(--divider); border-radius: 18px; padding: 12px 14px; margin-bottom: 12px; }
+        .sec h3 { font-size: 13px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+        .row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #2a2a30; }
+        .row:first-of-type { border-top: none; }
+        .row-main { flex: 1; min-width: 0; }
+        .row-title { font-size: 15px; font-weight: 600; }
+        .row-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+        .go-btn {
+            background: var(--accent-blue); color: #0c0c0e; border: none; border-radius: 18px;
+            padding: 9px 16px; font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+        }
+        .go-btn.secondary { background: #2d2d34; color: var(--text-primary); }
+        .go-btn:disabled { opacity: 0.35; cursor: default; }
+        .done-mark { color: var(--accent-green); font-weight: 700; font-size: 14px; flex-shrink: 0; }
+        .forecast { display: flex; gap: 6px; align-items: flex-end; height: 64px; }
+        .fc-col { flex: 1; text-align: center; font-size: 10.5px; color: var(--text-secondary); display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+        .fc-bar { background: var(--accent-blue); border-radius: 4px 4px 0 0; min-height: 2px; margin-bottom: 3px; }
+        .fc-num { font-size: 11px; color: var(--text-primary); margin-bottom: 2px; }
+        .home-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--text-secondary); padding: 4px 4px 0; }
+        .home-foot button { background: none; border: none; color: var(--accent-blue); font-size: 13px; cursor: pointer; padding: 6px; }
+        .sync-ok { color: var(--accent-green); } .sync-err { color: var(--accent-red); } .sync-busy { color: var(--c-hard); }
+
+        .sidebar-home { padding: 14px 16px; font-size: 14px; font-weight: 700; cursor: pointer; border-bottom: 1px solid var(--divider); color: var(--accent-blue); }
+
+        /* ── Окно настроек ── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200; display: none; align-items: center; justify-content: center; padding: 16px; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #202024; border: 1px solid var(--divider); border-radius: 20px; padding: 18px; width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto; }
+        .modal h2 { font-size: 18px; margin-bottom: 10px; }
+        .modal p { font-size: 13px; color: var(--text-secondary); line-height: 1.45; margin-bottom: 10px; }
+        .modal label { display: block; font-size: 12px; color: var(--text-secondary); margin: 10px 0 4px; }
+        .modal input, .modal textarea {
+            width: 100%; background: #131316; color: var(--text-primary); border: 1px solid var(--divider);
+            border-radius: 10px; padding: 10px; font-size: 14px; font-family: inherit;
+        }
+        .modal textarea { height: 70px; font-size: 11px; }
+        .modal-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .modal-status { font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+        @media (max-width: 420px) {
+            .rate-btn { font-size: 12px; height: 40px; }
+            .rate-row { gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <script src="data/Английский.js"></script>
+<script src="data/Арабский.js"></script>
+<script src="data/Китайский.js"></script>
+
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <span>📚 Мои колоды</span>
+            <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+        </div>
+        <div class="sidebar-home" onclick="goHome()">🏠 Сегодня</div>
+        <div id="deckList"></div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay" onclick="if (event.target === this) closeSettings()">
+        <div class="modal" id="modal"></div>
+    </div>
+
+    <div class="app">
+        <div class="top-bar">
+            <button class="icon-btn" onclick="openSidebar()">☰</button>
+            <div class="top-title" id="deckTitleBar"></div>
+            <div class="top-btns">
+                <button class="icon-btn" onclick="goHome()" title="Сегодня">🏠</button>
+            </div>
+        </div>
+
+        <div class="home" id="home"></div>
+        <div class="card" id="flashcard" hidden></div>
+        <div class="rate-row" id="rateRow" hidden></div>
+        <div class="nav-row" id="navRow" hidden></div>
+        <div class="progress-bar" id="progressBar" hidden><div class="progress-fill" id="progress"></div></div>
+        <div class="keyboard-hint" id="hint" hidden>⌨️ ↑ всё сразу · ↓ или SPACE по шагам · 1-4 оценка · → хорошо · ← трудно · S озвучить · Z отменить</div>
+    </div>
+
+    <script>
+        // Имена групп и колод приводим к одной форме Unicode (NFC): файлы с Мака
+        // дают «й» из двух символов, и без этого прогресс и данные не совпадали бы.
+        function nfc(s) { return (s && s.normalize) ? s.normalize('NFC') : s; }
+        const ALL_DECKS = {};
+        (function () {
+            const raw = window.ALL_DECKS || {};
+            Object.keys(raw).forEach(g => {
+                const ng = nfc(g);
+                ALL_DECKS[ng] = ALL_DECKS[ng] || {};
+                Object.keys(raw[g]).forEach(d => { ALL_DECKS[ng][nfc(d)] = raw[g][d]; });
+            });
+        })();
+        const groupNames = Object.keys(ALL_DECKS);
+
+        // ══════════════ Настройки системы ══════════════
+        const LANG_ORDER = ['Китайский', 'Арабский', 'Английский'];   // порядок «по кругу»
+        const NEW_DECKS_PER_DAY = 2;                                   // новых колод в день (кроме воскресенья)
+        const LADDER = [1, 3, 7, 14, 30, 60, 120];                     // интервалы в днях
+        const REVIEW_BATCH = 80;                                       // максимум карточек за одно нажатие «Повторить»
+        const AGAIN_GAP = 4;                                           // «Снова» вернётся через столько карточек
+        const DAY_START_HOUR = 4;                                      // учебный день начинается в 4 утра
+        const PROGRESS_KEY = 'fc_progress_v1';
+        const SYNC_CFG_KEY = 'fc_sync_cfg_v1';
+
+        function nowMs() { return window.__fakeNow || Date.now(); }
+        function pad2(n) { return (n < 10 ? '0' : '') + n; }
+        function dateStr(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+        function today() { return dateStr(new Date(nowMs() - DAY_START_HOUR * 3600 * 1000)); }
+        function parseDay(ds) { const p = ds.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+        function addDays(ds, n) { const d = parseDay(ds); d.setDate(d.getDate() + n); return dateStr(d); }
+        function diffDays(a, b) { return Math.round((parseDay(b) - parseDay(a)) / 86400000); }
+        function weekdayOf(ds) { return parseDay(ds).getDay(); }   // 0 = воскресенье
+        const WD = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+        const WDS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+        const MON = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+        function ivLabel(n) { return n <= 1 ? 'завтра' : n < 30 ? n + ' дн.' : Math.round(n / 30) + ' мес.'; }
+        function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+        function naturalCmp(a, b) { return a.localeCompare(b, 'ru', { numeric: true }); }
+        function deckKey(group, deck) { return group + '::' + deck; }
+        function hash36(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+        function shuffleArr(a) {
+            for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+            return a;
+        }
+
+        // ── Постоянный ID карточки: колода + текст вопроса (не зависит от порядка) ──
+        const CARD_BY_ID = {};
+        const DECK_CARDS = {};     // 'группа::колода' → [карточки]
+        groupNames.forEach(group => {
+            Object.keys(ALL_DECKS[group]).forEach(deck => {
+                const key = deckKey(group, deck);
+                DECK_CARDS[key] = ALL_DECKS[group][deck];
+                ALL_DECKS[group][deck].forEach(card => {
+                    let id = key + '#' + hash36(card.question), n = 1;
+                    while (CARD_BY_ID[id]) id = key + '#' + hash36(card.question) + '_' + (++n);
+                    card.id = id; card.group = group; card.deck = deck;
+                    CARD_BY_ID[id] = card;
+                });
+            });
+        });
+        const ALL_CARDS = Object.keys(CARD_BY_ID).map(id => CARD_BY_ID[id]);
+
+        // ══════════════ Прогресс (память браузера + синхронизация) ══════════════
+        let P = { v: 1, cards: {}, days: {} };
+        let memStore = {};
+        function lsGet(k) { try { const v = localStorage.getItem(k); return v === null ? (memStore[k] || null) : v; } catch (e) { return memStore[k] || null; } }
+        function lsSet(k, v) { memStore[k] = v; try { localStorage.setItem(k, v); } catch (e) {} }
+
+        function canon(o) {
+            if (Array.isArray(o)) return '[' + o.map(canon).join(',') + ']';
+            if (o && typeof o === 'object') return '{' + Object.keys(o).sort().map(k => JSON.stringify(k) + ':' + canon(o[k])).join(',') + '}';
+            return JSON.stringify(o);
+        }
+
+        // Приводит имена групп и колод в прогрессе к NFC (старые записи могли быть в другой форме)
+        function normalizeProgress(o) {
+            const out = { v: 1, cards: {}, days: {} };
+            Object.keys((o && o.cards) || {}).forEach(id => {
+                const i = id.lastIndexOf('#');
+                const nid = i < 0 ? id : nfc(id.slice(0, i)) + id.slice(i);
+                const c = o.cards[id], cur = out.cards[nid];
+                if (!cur || (c.t || 0) > (cur.t || 0)) out.cards[nid] = c;
+            });
+            Object.keys((o && o.days) || {}).forEach(ds => {
+                const d = Object.assign({}, o.days[ds]);
+                d.new = (d.new || []).map(x => ({ g: nfc(x.g), d: nfc(x.d) }));
+                out.days[ds] = d;
+            });
+            return out;
+        }
+
+        function loadProgress() {
+            try {
+                const raw = lsGet(PROGRESS_KEY);
+                if (raw) { const d = JSON.parse(raw); if (d && d.cards && d.days) return normalizeProgress(d); }
+            } catch (e) {}
+            return { v: 1, cards: {}, days: {} };
+        }
+        P = loadProgress();
+
+        function persistLocal() { lsSet(PROGRESS_KEY, JSON.stringify(P)); }
+        function saveProgress() { persistLocal(); scheduleSync(15000); }
+
+        // Слияние двух копий прогресса: по каждой карточке побеждает более свежая запись
+        function mergeProgress(a, b) {
+            const out = { v: 1, cards: {}, days: {} };
+            [normalizeProgress(a), normalizeProgress(b)].forEach(src => {
+                Object.keys(src.cards || {}).forEach(id => {
+                    const cur = out.cards[id], c = src.cards[id];
+                    if (!cur || (c.t || 0) > (cur.t || 0)) out.cards[id] = c;
+                });
+                Object.keys(src.days || {}).forEach(ds => {
+                    const cur = out.days[ds], d = src.days[ds];
+                    if (!cur) { out.days[ds] = JSON.parse(JSON.stringify(d)); return; }
+                    const win = (d.t || 0) > (cur.t || 0) ? d : cur;
+                    out.days[ds] = Object.assign({}, win, { n: Math.max(cur.n || 0, d.n || 0), ms: Math.max(cur.ms || 0, d.ms || 0) });
+                });
+            });
+            return out;
+        }
+
+        // ══════════════ Правила повторения ══════════════
+        // r: 'again' | 'hard' | 'good' | 'easy'. forced — карточка уже получала «Снова» в этой сессии.
+        // Возвращает новое состояние {s: ступень, d: дата повтора, lapse} или null (расписание не меняется).
+        function computeOutcome(st, r, forced, td) {
+            const isNew = !st || !st.d;
+            const due = !isNew && st.d <= td;
+            if (r === 'again') return null;
+            if (forced) r = 'hard';
+            if (r === 'hard') {
+                const tomorrow = addDays(td, 1);
+                if (!isNew && !due && st.d <= tomorrow) return null;
+                return { s: 0, d: tomorrow, lapse: !isNew };
+            }
+            if (!isNew && !due) return null;   // повтор «не по графику» срок вперёд не двигает
+            const cur = isNew ? -1 : st.s;
+            const ns = Math.min(LADDER.length - 1, r === 'good' ? Math.max(cur + 1, 1) : Math.max(cur + 2, 2));
+            return { s: ns, d: addDays(td, LADDER[ns]), lapse: false };
+        }
+
+        function applyOutcome(card, out) {
+            const st = P.cards[card.id] || {};
+            const td = today();
+            P.cards[card.id] = {
+                s: out.s, d: out.d, t: nowMs(), i: st.i || td,
+                l: (st.l || 0) + (out.lapse ? 1 : 0), r: (st.r || 0) + 1
+            };
+        }
+
+        function stateOf(card) { return P.cards[card.id]; }
+        function isNewCard(card) { const s = stateOf(card); return !s || !s.d; }
+
+        // ══════════════ Выборки карточек ══════════════
+        function sortedDecks(group) { return Object.keys(ALL_DECKS[group]).sort(naturalCmp); }
+        function langList() {
+            const known = LANG_ORDER.filter(l => ALL_DECKS[l]);
+            return known.concat(groupNames.filter(g => known.indexOf(g) < 0));
+        }
+        function dueCards(group) {
+            const td = today();
+            const list = ALL_CARDS.filter(c => (!group || c.group === group) && !isNewCard(c) && stateOf(c).d <= td);
+            shuffleArr(list);
+            return list.sort((a, b) => stateOf(a).d < stateOf(b).d ? -1 : stateOf(a).d > stateOf(b).d ? 1 : 0);
+        }
+        function introducedSince(day, group) {
+            return ALL_CARDS.filter(c => (!group || c.group === group) && stateOf(c) && stateOf(c).i && stateOf(c).i >= day);
+        }
+        function weakCards() { return ALL_CARDS.filter(c => { const s = stateOf(c); return s && (s.l || 0) >= 2 && s.s <= 1; }); }
+        function newCardsOf(group, deck) { return DECK_CARDS[deckKey(group, deck)].filter(isNewCard); }
+        function nextNewDeck(group, exclude) {
+            return sortedDecks(group).find(d => newCardsOf(group, d).length > 0 && !(exclude || []).some(e => e.g === group && e.d === d));
+        }
+
+        // ══════════════ План дня: 2 новые колоды, языки по кругу, воскресенье без новых ══════════════
+        function pickNewDecks(count, startPtr, exclude) {
+            const langs = langList(), n = langs.length, chosen = [];
+            let q = startPtr;
+            for (let guard = 0; guard < n * 3 && chosen.length < count && n > 0; guard++) {
+                const g = langs[q % n]; q++;
+                const d = nextNewDeck(g, chosen.concat(exclude || []));
+                if (d) chosen.push({ g, d });
+            }
+            return { chosen, next: n ? q % n : 0 };
+        }
+        function lastPointer(td) {
+            const keys = Object.keys(P.days).filter(k => k < td && typeof P.days[k].next === 'number').sort();
+            return keys.length ? P.days[keys[keys.length - 1]].next : 0;
+        }
+        function ensureDay() {
+            const td = today();
+            if (!P.days[td]) {
+                const sunday = weekdayOf(td) === 0;
+                const pick = sunday ? { chosen: [], next: lastPointer(td) } : pickNewDecks(NEW_DECKS_PER_DAY, lastPointer(td));
+                P.days[td] = { new: pick.chosen, next: pick.next, n: 0, ms: 0, t: nowMs() };
+                saveProgress();
+            }
+            return P.days[td];
+        }
+        function addExtraDeck() {
+            const day = ensureDay();
+            const pick = pickNewDecks(1, day.next, day.new);
+            if (!pick.chosen.length) return false;
+            day.new = day.new.concat(pick.chosen); day.next = pick.next; day.t = nowMs();
+            saveProgress();
+            return true;
+        }
+
+        // ══════════════ Сессия: очередь карточек ══════════════
+        let session = null;
+        let currentGroupName = null, currentDeckName = null;
+        let imageShown = false, answerShown = false, onResultsScreen = true, ratingInProgress = false;
+        let lastActionMs = 0;
+        let expandedGroups = new Set();
+        let mode = 'home';     // 'home' | 'card' | 'results'
+
+        function startSession(kind, title, cards) {
+            if (!cards.length) return;
+            session = { kind, title, queue: cards.slice(), pos: 0, again: new Set(), counts: { again: 0, hard: 0, good: 0, easy: 0 }, history: [] };
+            lastActionMs = nowMs();
+            closeSidebar();
+            showCard();
+        }
+        function curCard() { return session.queue[session.pos]; }
+        function curSt() { return stateOf(curCard()); }
+
+        function startNewDeck(group, deck) {
+            startSession('new', group + ' · ' + deck, shuffleArr(newCardsOf(group, deck)));
+        }
+        function startReview(group) {
+            startSession('review', (group || 'Все языки') + ' · повтор', dueCards(group).slice(0, REVIEW_BATCH));
+        }
+        function startPractice(title, cards) { startSession('practice', title, shuffleArr(cards.slice())); }
+        function startToday() { startPractice('Сегодняшние новые', introducedSince(today())); }
+        function startWeek(g) { startPractice('Неделя' + (g ? ' · ' + g : ''), introducedSince(addDays(today(), -6), g || null)); }
+        function startWeak() { startPractice('Трудные карточки', weakCards()); }
+        function startDeckPractice(group, deck) {
+            currentGroupName = group; currentDeckName = deck; expandedGroups.add(group);
+            startPractice(group + ' · ' + deck, DECK_CARDS[deckKey(group, deck)]);
+        }
+
+        function rate(r) {
+            if (!session || mode !== 'card' || ratingInProgress) return;
+            const card = curCard();
+            const before = P.cards[card.id] ? Object.assign({}, P.cards[card.id]) : null;
+            const entry = { id: card.id, r, before, wasAgain: session.again.has(card.id), inserted: -1, day: null };
+            const td = today();
+            const day = ensureDay();
+            entry.day = { n: day.n || 0, ms: day.ms || 0 };
+
+            if (r === 'again') {
+                session.again.add(card.id);
+                const at = Math.min(session.queue.length, session.pos + 1 + AGAIN_GAP);
+                session.queue.splice(at, 0, card);
+                entry.inserted = at;
+            } else {
+                const out = computeOutcome(before, r, session.again.has(card.id), td);
+                if (out) applyOutcome(card, out);
+            }
+            session.counts[r]++;
+            // время занятий: пауза между оценками считается не больше минуты
+            const now = nowMs();
+            day.n = (day.n || 0) + 1;
+            day.ms = (day.ms || 0) + Math.min(60000, Math.max(0, now - lastActionMs));
+            day.t = now; lastActionMs = now;
+            session.history.push(entry);
+            if (navigator.vibrate) navigator.vibrate(12);
+            saveProgress();
+            session.pos++;
+            if (session.pos >= session.queue.length) finishSession(); else showCard();
+        }
+
+        function undoRating() {
+            if (!session || !session.history.length || ratingInProgress) return;
+            const e = session.history.pop();
+            if (e.r === 'again') {
+                session.queue.splice(e.inserted, 1);
+                if (!e.wasAgain) session.again.delete(e.id);
+            } else if (e.before) P.cards[e.id] = Object.assign({}, e.before, { t: nowMs() });
+            else P.cards[e.id] = { s: -1, d: '', i: '', l: 0, r: 0, t: nowMs() };
+            session.counts[e.r]--;
+            const day = P.days[today()];
+            if (day) { day.n = e.day.n; day.ms = e.day.ms; day.t = nowMs(); }
+            session.pos--;
+            saveProgress();
+            showCard();
+        }
+
+        function skipCard() {
+            if (!session || mode !== 'card' || session.pos >= session.queue.length - 1) return;
+            session.queue.push(session.queue.splice(session.pos, 1)[0]);
+            showCard();
+        }
+
+        function finishSession() {
+            mode = 'results'; onResultsScreen = true;
+            renderResults();
+            syncNow();
+        }
+
+        // ══════════════ Озвучка ══════════════
+        function isRTL(text) { return /[֑-߿יִ-﷽ﹰ-ﻼ]/.test(text); }
+        function isCJK(text) { return /[一-鿿぀-ヿ가-힯]/.test(text); }
+        function detectSpeechLang(text) {
+            if (/[؀-ۿ]/.test(text)) return 'ar-SA';
+            if (/[Ѐ-ӿ]/.test(text)) return 'ru-RU';
+            if (/[一-鿿]/.test(text)) return 'zh-CN';
+            if (/[぀-ヿ]/.test(text)) return 'ja-JP';
+            if (/[฀-๿]/.test(text)) return 'th-TH';
+            return 'en-US';
+        }
+        function speakText(text) {
+            if (!('speechSynthesis' in window)) { alert('Озвучка не поддерживается в этом браузере'); return; }
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = detectSpeechLang(text);
+            u.rate = 0.9;
+            const btn = document.getElementById('speakBtn');
+            if (btn) { u.onstart = () => btn.classList.add('speaking'); u.onend = u.onerror = () => btn.classList.remove('speaking'); }
+            window.speechSynthesis.speak(u);
+        }
+        function speakCurrentCard() { if (session && mode === 'card') speakText(curCard().question); }
+
+        // ══════════════ Переименование колод и разделов ══════════════
+        const DECK_NAMES_STORAGE_KEY = 'flashcard_deck_display_names_v2';
+        const GROUP_NAMES_STORAGE_KEY = 'flashcard_group_display_names_v1';
+        function loadJson(k) { try { const raw = lsGet(k); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; } }
+        let deckDisplayNames = loadJson(DECK_NAMES_STORAGE_KEY);
+        let groupDisplayNames = loadJson(GROUP_NAMES_STORAGE_KEY);
+        function getDisplayName(key) { return deckDisplayNames[key] || key.split('::')[1]; }
+        function getGroupDisplayName(g) { return groupDisplayNames[g] || g; }
+        function startRenameDeck(group, deck) {
+            const key = deckKey(group, deck), current = getDisplayName(key);
+            const nn = prompt('Новое название колоды:', current);
+            if (nn && nn.trim() && nn.trim() !== current) {
+                deckDisplayNames[key] = nn.trim(); lsSet(DECK_NAMES_STORAGE_KEY, JSON.stringify(deckDisplayNames));
+                renderSidebar(); refreshScreen();
+            }
+        }
+        function startRenameGroup(g) {
+            const current = getGroupDisplayName(g);
+            const nn = prompt('Новое название раздела:', current);
+            if (nn && nn.trim() && nn.trim() !== current) {
+                groupDisplayNames[g] = nn.trim(); lsSet(GROUP_NAMES_STORAGE_KEY, JSON.stringify(groupDisplayNames));
+                renderSidebar(); refreshScreen();
+            }
+        }
+        function toggleGroup(g) { if (expandedGroups.has(g)) expandedGroups.delete(g); else expandedGroups.add(g); renderSidebar(); }
+        function deckLabel(g, d) { return getGroupDisplayName(g) + ' · ' + getDisplayName(deckKey(g, d)); }
+
+        // ══════════════ Боковое меню ══════════════
+        function renderSidebar() {
+            const listEl = document.getElementById('deckList');
+            if (groupNames.length === 0) { listEl.innerHTML = '<div class="empty-state">Колоды не найдены</div>'; return; }
+            listEl.innerHTML = groupNames.map(group => {
+                const decks = sortedDecks(group), isExpanded = expandedGroups.has(group);
+                const decksHtml = decks.map(deck => {
+                    const cards = DECK_CARDS[deckKey(group, deck)], key = deckKey(group, deck);
+                    const firstImg = cards.find(c => c.image);
+                    const thumb = firstImg ? `<img class="deck-thumb" src="${esc(firstImg.image)}" alt="">` : `<div class="deck-thumb-placeholder">📖</div>`;
+                    const total = cards.length;
+                    const seen = cards.filter(c => !isNewCard(c));
+                    const strong = seen.filter(c => stateOf(c).s >= 2).length;
+                    const weak = seen.length - strong;
+                    const dueN = seen.filter(c => stateOf(c).d <= today()).length;
+                    let progressText = seen.length === 0 ? `${total} карточек` : `${seen.length}/${total} начато` + (dueN ? ` · повторить ${dueN}` : '');
+                    const active = (session && mode !== 'home' && group === currentGroupName && deck === currentDeckName) ? 'active' : '';
+                    return `
+                        <div class="deck-item ${active}" data-group="${esc(group)}" data-deck="${esc(deck)}" onclick="startDeckPractice(this.dataset.group, this.dataset.deck)">
+                            ${thumb}
+                            <div class="deck-info">
+                                <div class="deck-name-row">
+                                    <div class="deck-name">${esc(getDisplayName(key))}</div>
+                                    <button class="deck-rename-btn" onclick="event.stopPropagation(); startRenameDeck(this.closest('.deck-item').dataset.group, this.closest('.deck-item').dataset.deck)">✎</button>
+                                </div>
+                                <div class="deck-count">${progressText}</div>
+                                <div class="deck-progress-bar">
+                                    <div class="seg correct" style="flex:${strong} ${strong} 0"></div>
+                                    <div class="seg incorrect" style="flex:${weak} ${weak} 0; background: var(--c-hard)"></div>
+                                    <div class="seg remaining" style="flex:${total - seen.length} ${total - seen.length} 0"></div>
+                                </div>
+                            </div>
+                        </div>`;
+                }).join('');
+                return `
+                    <div class="group-section">
+                        <div class="group-header">
+                            <div class="group-header-clickable" data-group="${esc(group)}" onclick="toggleGroup(this.dataset.group)">
+                                <span class="group-toggle-icon">${isExpanded ? '▾' : '▸'}</span>
+                                <span>📁 ${esc(getGroupDisplayName(group))}</span>
+                                <span class="group-count">${decks.length} колод</span>
+                            </div>
+                            <button class="group-rename-btn" data-group="${esc(group)}" onclick="event.stopPropagation(); startRenameGroup(this.dataset.group)">✎</button>
+                        </div>
+                        <div class="group-decks ${isExpanded ? 'expanded' : ''}">${decksHtml}</div>
+                    </div>`;
+            }).join('');
+        }
+        function openSidebar() { renderSidebar(); document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.add('open'); }
+        function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('open'); }
+
+        // ══════════════ Переключение экранов ══════════════
+        function setScreen(which) {
+            mode = which;
+            const home = which === 'home';
+            document.getElementById('home').hidden = !home;
+            document.getElementById('flashcard').hidden = home;
+            document.getElementById('navRow').hidden = which !== 'card';
+            document.getElementById('rateRow').hidden = which !== 'card';
+            document.getElementById('progressBar').hidden = which !== 'card';
+            document.getElementById('hint').hidden = which !== 'card';
+            onResultsScreen = which !== 'card';
+        }
+        function goHome() {
+            closeSidebar();
+            session = null;
+            setScreen('home');
+            renderHome();
+        }
+        function refreshScreen() {
+            if (mode === 'home') renderHome();
+            else if (mode === 'card') renderCard(false);
+            else if (mode === 'results') renderResults();
+        }
+
+        // ══════════════ Главный экран «Сегодня» ══════════════
+        function forecastCounts() {
+            const td = today(), out = [];
+            for (let i = 0; i < 7; i++) out.push(0);
+            ALL_CARDS.forEach(c => {
+                const s = stateOf(c); if (!s || !s.d) return;
+                const k = diffDays(td, s.d);
+                if (k <= 0) out[0]++; else if (k < 7) out[k]++;
+            });
+            return out;
+        }
+
+        function renderHome() {
+            const td = today(), day = ensureDay(), wd = weekdayOf(td), sunday = wd === 0;
+            document.getElementById('deckTitleBar').textContent = 'Сегодня';
+            const parts = [];
+            const dd = parseDay(td);
+            parts.push(`<div class="home-date">${WD[wd]}, ${dd.getDate()} ${MON[dd.getMonth()]}</div>`);
+            if (sunday) parts.push(`<div class="home-banner">Воскресенье: новых колод нет, только повторение. Утром час и вечером час.</div>`);
+
+            // новые колоды
+            const newDecks = day.new.filter(x => DECK_CARDS[deckKey(x.g, x.d)]);
+            let newHtml = '';
+            if (newDecks.length === 0) {
+                newHtml = `<div class="row-sub">${sunday ? 'Сегодня без новых колод.' : 'Новых колод больше нет. Пора готовить следующий набор.'}</div>`;
+            } else {
+                newHtml = newDecks.map(x => {
+                    const total = DECK_CARDS[deckKey(x.g, x.d)] ? DECK_CARDS[deckKey(x.g, x.d)].length : 0;
+                    const left = DECK_CARDS[deckKey(x.g, x.d)] ? newCardsOf(x.g, x.d).length : 0;
+                    const done = left === 0;
+                    const btn = done ? `<span class="done-mark">✓ пройдена</span>`
+                        : `<button class="go-btn" data-g="${esc(x.g)}" data-d="${esc(x.d)}" onclick="startNewDeck(this.dataset.g, this.dataset.d)">${left === total ? 'Начать' : 'Продолжить'}</button>`;
+                    return `<div class="row"><div class="row-main"><div class="row-title">${esc(deckLabel(x.g, x.d))}</div><div class="row-sub">${left === total ? total + ' новых карточек' : 'осталось ' + left + ' из ' + total}</div></div>${btn}</div>`;
+                }).join('');
+            }
+            const canExtra = !sunday && newDecks.length > 0 && newDecks.every(x => newCardsOf(x.g, x.d).length === 0) && nextNewDeckAvailable(day);
+            parts.push(`<div class="sec"><h3>Новые колоды</h3>${newHtml}${canExtra ? `<div class="row"><div class="row-main"><div class="row-sub">Есть время? Можно взять ещё колоду.</div></div><button class="go-btn secondary" onclick="addExtraDeck(); renderHome();">+ ещё колоду</button></div>` : ''}</div>`);
+
+            // повторение по графику
+            const langs = langList();
+            const totalDue = dueCards().length;
+            let revHtml = langs.map(g => {
+                const n = ALL_CARDS.filter(c => c.group === g && !isNewCard(c) && stateOf(c).d <= td).length;
+                return `<div class="row"><div class="row-main"><div class="row-title">${esc(getGroupDisplayName(g))}</div><div class="row-sub">${n ? 'пора повторить: ' + n : 'всё повторено'}</div></div><button class="go-btn" data-g="${esc(g)}" onclick="startReview(this.dataset.g)" ${n ? '' : 'disabled'}>Повторить</button></div>`;
+            }).join('');
+            revHtml += `<div class="row"><div class="row-main"><div class="row-title">Все языки подряд</div><div class="row-sub">${totalDue ? totalDue + ' карточек' + (totalDue > REVIEW_BATCH ? ' (по ' + REVIEW_BATCH + ' за раз)' : '') : 'на сегодня повторять нечего 🎉'}</div></div><button class="go-btn secondary" onclick="startReview(null)" ${totalDue ? '' : 'disabled'}>Повторить</button></div>`;
+            parts.push(`<div class="sec"><h3>Повторение по графику</h3>${revHtml}</div>`);
+
+            // закрепление
+            const todayNew = introducedSince(td), weekNew = introducedSince(addDays(td, -6)), weak = weakCards();
+            const pRow = (title, sub, fn, n, g) => `<div class="row"><div class="row-main"><div class="row-title">${title}</div><div class="row-sub">${sub}</div></div><button class="go-btn secondary" ${g ? 'data-g="' + esc(g) + '"' : ''} onclick="${fn}" ${n ? '' : 'disabled'}>${n ? n + ' карт.' : 'пусто'}</button></div>`;
+            let pinHtml = pRow('Новые за сегодня', 'вечерняя проверка того, что учил утром', 'startToday()', todayNew.length);
+            if (sunday) {
+                langs.forEach(g => {
+                    pinHtml += pRow('Неделя: ' + esc(getGroupDisplayName(g)), 'всё, что начато за 7 дней', 'startWeek(this.dataset.g)', introducedSince(addDays(td, -6), g).length, g);
+                });
+            } else {
+                pinHtml += pRow('Неделя целиком', 'всё, что начато за 7 дней', 'startWeek()', weekNew.length);
+            }
+            pinHtml += pRow('Трудные карточки', 'часто «Снова» или «Трудно»', 'startWeak()', weak.length);
+            parts.push(`<div class="sec"><h3>Закрепление</h3>${pinHtml}</div>`);
+
+            // прогноз
+            const fc = forecastCounts(), mx = Math.max(1, ...fc);
+            parts.push(`<div class="sec"><h3>Сколько повторять в ближайшие дни</h3><div class="forecast">${fc.map((n, i) => {
+                const lab = i === 0 ? 'сег.' : WDS[(wd + i) % 7];
+                return `<div class="fc-col"><div class="fc-num">${n}</div><div class="fc-bar" style="height:${Math.round(n / mx * 40)}px"></div>${lab}</div>`;
+            }).join('')}</div></div>`);
+
+            const ms = day.ms || 0;
+            parts.push(`<div class="home-foot"><span>Сегодня: ${day.n || 0} оценок, ${Math.round(ms / 60000)} мин</span><span class="${syncClass()}" id="syncLabel">${syncText()}</span></div>`);
+            parts.push(`<div class="home-foot"><button onclick="openSidebar()">📚 Все колоды</button><button onclick="openSettings()">⚙︎ Синхронизация</button></div>`);
+            document.getElementById('home').innerHTML = parts.join('');
+        }
+        function nextNewDeckAvailable(day) { return langList().some(g => nextNewDeck(g, day.new)); }
+
+        // ══════════════ Карточка ══════════════
+        function showCard() {
+            imageShown = false; answerShown = false;
+            setScreen('card');
+            renderCard(true);
+        }
+
+        function rateRowHtml() {
+            const card = curCard(), st = P.cards[card.id] || null, td = today(), forced = session.again.has(card.id);
+            const lab = (r) => {
+                if (r === 'again') return 'сейчас';
+                const out = computeOutcome(st, r, forced, td);
+                return out ? ivLabel(diffDays(td, out.d)) : '✓';
+            };
+            const btn = (r, name) => `<button class="rate-btn ${r}" onclick="rate('${r}')">${name}<small>${lab(r)}</small></button>`;
+            return btn('again', 'Снова') + btn('hard', 'Трудно') + btn('good', 'Хорошо') + btn('easy', 'Легко');
+        }
+
+        function renderCard(animate) {
+            const card = curCard(), cardEl = document.getElementById('flashcard');
+            document.getElementById('deckTitleBar').textContent = session.title;
+            const dir = isRTL(card.question) ? 'rtl' : 'ltr', cjk = isCJK(card.question) ? 'cjk' : '';
+
+            let topContent;
+            if (!card.image) topContent = '';
+            else if (imageShown) topContent = `<div class="image-slot"><img src="${esc(card.image)}" alt=""></div>`;
+            else topContent = `<div class="zone-hint">👆 сюда — сразу картинка и перевод</div>`;
+
+            let bottomHint = '👇 сюда — сначала картинка, потом перевод';
+            if (!card.image) bottomHint = '👇 сюда — перевод';
+            else if (imageShown) bottomHint = '👇 ещё раз — перевод';
+            const bottomContent = answerShown ? `<div class="answer-text">${esc(card.answer)}</div>` : `<div class="zone-hint">${bottomHint}</div>`;
+
+            cardEl.style.transition = ''; cardEl.style.transform = '';
+            cardEl.innerHTML = `
+                <div class="card-top-row">
+                    <button class="mini-btn ${session.history.length ? '' : 'disabled'}" onclick="undoRating()" title="Отменить последнюю оценку">↶</button>
+                    <span class="card-counter">${session.pos + 1} из ${session.queue.length}</span>
+                    <button class="mini-btn ${session.pos >= session.queue.length - 1 ? 'disabled' : ''}" onclick="skipCard()" title="Отложить в конец">›</button>
+                </div>
+                <div class="zone zone-top ${card.image ? '' : 'no-img'}" id="zoneTop">
+                    <p class="question-text ${cjk}" dir="${dir}">${esc(card.question)}</p>
+                    ${topContent}
+                </div>
+                <div class="zone-divider"></div>
+                <div class="zone zone-bottom" id="zoneBottom">${bottomContent}</div>
+                <div class="swipe-badge know" id="badgeKnow">ХОРОШО</div>
+                <div class="swipe-badge dont" id="badgeDont">ТРУДНО</div>`;
+            if (animate) { cardEl.classList.remove('enter'); void cardEl.offsetWidth; cardEl.classList.add('enter'); }
+
+            document.getElementById('progress').style.width = ((session.pos / session.queue.length) * 100) + '%';
+            const rr = document.getElementById('rateRow');
+            rr.innerHTML = answerShown ? rateRowHtml() : '';
+            rr.classList.toggle('show', answerShown);
+            renderNavRow();
+        }
+
+        function renderNavRow() {
+            const c = session.counts;
+            document.getElementById('navRow').innerHTML = `
+                <button class="act act-wrong" onclick="rate('hard')">✕ <small>${c.again + c.hard}</small></button>
+                <button class="act act-speak" id="speakBtn" onclick="speakCurrentCard()">🔊</button>
+                <button class="act act-right" onclick="rate('good')">✓ <small>${c.good + c.easy}</small></button>`;
+        }
+
+        function tapTop() {
+            const card = curCard();
+            const allShown = answerShown && (imageShown || !card.image);
+            imageShown = !allShown && !!card.image;
+            answerShown = !allShown;
+            renderCard(false);
+        }
+        function tapBottom() { revealNextStep(); }
+        function revealNextStep() {
+            const card = curCard();
+            if (card.image && !imageShown) imageShown = true;
+            else if (!answerShown) answerShown = true;
+            else { imageShown = false; answerShown = false; }
+            renderCard(false);
+        }
+
+        // ══════════════ Итог сессии ══════════════
+        function renderResults() {
+            const c = session.counts, total = c.again + c.hard + c.good + c.easy;
+            document.getElementById('deckTitleBar').textContent = session.title;
+            const td = today(), tomorrowDue = ALL_CARDS.filter(x => !isNewCard(x) && stateOf(x).d <= addDays(td, 1)).length;
+            const stat = (n, label, color) => `<div class="results-stat"><div class="results-stat-number" style="color:var(${color})">${n}</div><div class="results-stat-label">${label}</div></div>`;
+            const cardEl = document.getElementById('flashcard');
+            cardEl.style.transition = ''; cardEl.style.transform = '';
+            cardEl.innerHTML = `
+                <div class="results-wrap">
+                    <div class="results-title">🎉 Готово: ${esc(session.title)}</div>
+                    <div class="results-summary">
+                        ${stat(c.again, 'Снова', '--c-again')}${stat(c.hard, 'Трудно', '--c-hard')}${stat(c.good, 'Хорошо', '--c-good')}${stat(c.easy, 'Легко', '--c-easy')}
+                    </div>
+                    <div class="results-sub" style="text-align:center;color:var(--text-secondary);font-size:13px">Оценок за сессию: ${total}. К завтрашнему дню на повтор: ${tomorrowDue}.</div>
+                    <button class="reset-btn" onclick="goHome()">🏠 На главный экран</button>
+                    <button class="reset-btn" style="background:#2d2d34;color:var(--text-primary)" onclick="undoRating()">↶ Отменить последнюю оценку</button>
+                </div>`;
+            document.getElementById('navRow').innerHTML = '';
+            document.getElementById('rateRow').innerHTML = '';
+            document.getElementById('progress').style.width = '100%';
+            setScreen('results');
+            document.getElementById('progressBar').hidden = false;
+        }
+
+        // ══════════════ Свайпы и тапы ══════════════
+        // Слева направо → «Хорошо» (через 3 дня). Справа налево → «Трудно» (завтра).
+        const SWIPE_THRESHOLD = 90;
+        let drag = null;
+        function setBadges(dx) {
+            const k = document.getElementById('badgeKnow'), d = document.getElementById('badgeDont');
+            if (k) k.style.opacity = Math.max(0, Math.min(1, dx / SWIPE_THRESHOLD));
+            if (d) d.style.opacity = Math.max(0, Math.min(1, -dx / SWIPE_THRESHOLD));
+        }
+        function setupGestures() {
+            const cardEl = document.getElementById('flashcard');
+            cardEl.addEventListener('pointerdown', (e) => {
+                if (mode !== 'card' || ratingInProgress) return;
+                if (e.target.closest('button')) return;
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                drag = { x: e.clientX, y: e.clientY, t: Date.now(), dx: 0, moving: false, id: e.pointerId, target: e.target };
+            });
+            cardEl.addEventListener('pointermove', (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+                if (!drag.moving) {
+                    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+                        drag.moving = true;
+                        try { cardEl.setPointerCapture(e.pointerId); } catch (err) {}
+                    } else if (Math.abs(dy) > 10) { drag = null; return; }
+                    else return;
+                }
+                drag.dx = dx;
+                cardEl.style.transition = 'none';
+                cardEl.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
+                setBadges(dx);
+            });
+            const finish = (e, cancelled) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const d = drag; drag = null;
+                if (!d.moving) {
+                    if (cancelled) return;
+                    if (d.target.closest('#zoneBottom')) tapBottom(); else tapTop();
+                    return;
+                }
+                const velocity = Math.abs(d.dx) / Math.max(1, Date.now() - d.t);
+                const passed = !cancelled && (Math.abs(d.dx) > SWIPE_THRESHOLD || (Math.abs(d.dx) > 40 && velocity > 0.6));
+                if (passed) {
+                    const good = d.dx > 0;
+                    ratingInProgress = true;
+                    cardEl.style.transition = 'transform 0.22s ease-in';
+                    cardEl.style.transform = `translateX(${good ? 130 : -130}vw) rotate(${good ? 18 : -18}deg)`;
+                    setTimeout(() => { ratingInProgress = false; rate(good ? 'good' : 'hard'); }, 200);
+                } else {
+                    cardEl.style.transition = 'transform 0.2s ease-out';
+                    cardEl.style.transform = '';
+                    setBadges(0);
+                }
+            };
+            cardEl.addEventListener('pointerup', (e) => finish(e, false));
+            cardEl.addEventListener('pointercancel', (e) => finish(e, true));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('modalOverlay').classList.contains('open')) return;
+            if (mode !== 'card') return;
+            if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+            if (e.key === ' ') { e.preventDefault(); revealNextStep(); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); tapTop(); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); tapBottom(); }
+            if (e.key === 'ArrowRight' || e.key === 'y' || e.key === 'Y') rate('good');
+            if (e.key === 'ArrowLeft' || e.key === 'n' || e.key === 'N') rate('hard');
+            if (answerShown && e.key === '1') rate('again');
+            if (answerShown && e.key === '2') rate('hard');
+            if (answerShown && e.key === '3') rate('good');
+            if (answerShown && e.key === '4') rate('easy');
+            if (e.key === 'z' || e.key === 'Z') undoRating();
+            if (e.key === 's' || e.key === 'S' || e.key === 'Escape') { e.preventDefault(); speakCurrentCard(); }
+        });
+
+        // ══════════════ Синхронизация через GitHub ══════════════
+        // Прогресс хранится в файле progress.json в отдельной ветке progress того же репозитория
+        // (ветка не публикуется на сайте и не перезапускает GitHub Pages).
+        const SYNC = { busy: false, again: false, timer: null, status: 'off', last: 0, err: '' };
+
+        function defaultCfg() {
+            const cfg = { token: '', owner: '', repo: '', branch: 'progress', path: 'progress.json' };
+            try {
+                const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+                if (m) { cfg.owner = m[1]; cfg.repo = (location.pathname.split('/')[1] || ''); }
+            } catch (e) {}
+            return cfg;
+        }
+        function getCfg() {
+            const cfg = defaultCfg();
+            try { Object.assign(cfg, JSON.parse(lsGet(SYNC_CFG_KEY) || '{}')); } catch (e) {}
+            return cfg;
+        }
+        function syncConfigured() { const c = getCfg(); return !!(c.token && c.owner && c.repo); }
+        function syncClass() { return ({ ok: 'sync-ok', err: 'sync-err', busy: 'sync-busy' })[SYNC.status] || ''; }
+        function syncText() {
+            if (!syncConfigured()) return '☁️ синхронизация выключена';
+            if (SYNC.status === 'busy') return '☁️ синхронизация…';
+            if (SYNC.status === 'err') return '☁️ ошибка: ' + SYNC.err;
+            if (SYNC.status === 'ok') return '☁️ сохранено в GitHub';
+            return '☁️ ожидает синхронизации';
+        }
+        function setSync(status) {
+            SYNC.status = status;
+            const el = document.getElementById('syncLabel');
+            if (el) { el.textContent = syncText(); el.className = syncClass(); }
+            const ms = document.getElementById('modalStatus');
+            if (ms) { ms.textContent = syncText(); ms.className = 'modal-status ' + syncClass(); }
+        }
+        function scheduleSync(delay) {
+            if (!syncConfigured()) return;
+            clearTimeout(SYNC.timer);
+            SYNC.timer = setTimeout(syncNow, delay);
+        }
+
+        function b64enc(str) { const bytes = new TextEncoder().encode(str); let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b)); return btoa(bin); }
+        function b64dec(b64) { const bin = atob(b64.replace(/\s/g, '')); const bytes = Uint8Array.from(bin, c => c.charCodeAt(0)); return new TextDecoder().decode(bytes); }
+
+        async function ghFetch(cfg, method, url, body) {
+            const res = await fetch('https://api.github.com' + url, {
+                method, cache: 'no-store',
+                headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+                body: body ? JSON.stringify(body) : undefined
+            });
+            if (res.status === 401 || res.status === 403) {
+                let msg = ''; try { msg = (await res.json()).message || ''; } catch (e) {}
+                throw new Error('нет доступа (' + res.status + ') ' + msg);
+            }
+            return res;
+        }
+        async function ensureBranch(cfg) {
+            const base = `/repos/${cfg.owner}/${cfg.repo}`;
+            const have = await ghFetch(cfg, 'GET', `${base}/git/ref/heads/${cfg.branch}`);
+            if (have.status === 200) return;
+            const repoRes = await ghFetch(cfg, 'GET', base);
+            if (repoRes.status !== 200) throw new Error('репозиторий не найден: проверьте имя и токен');
+            const def = (await repoRes.json()).default_branch || 'main';
+            const refRes = await ghFetch(cfg, 'GET', `${base}/git/ref/heads/${def}`);
+            if (refRes.status !== 200) throw new Error('не найдена основная ветка ' + def);
+            const sha = (await refRes.json()).object.sha;
+            const mk = await ghFetch(cfg, 'POST', `${base}/git/refs`, { ref: 'refs/heads/' + cfg.branch, sha });
+            if (mk.status !== 201 && mk.status !== 422) throw new Error('не удалось создать ветку (' + mk.status + ')');
+        }
+        async function pullRemote(cfg) {
+            const res = await ghFetch(cfg, 'GET', `/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${cfg.branch}&_=${nowMs()}`);
+            if (res.status === 404) { await ensureBranch(cfg); return { data: null, sha: null }; }
+            if (res.status !== 200) throw new Error('ошибка чтения (' + res.status + ')');
+            const j = await res.json();
+            let data = null;
+            try { data = JSON.parse(b64dec(j.content || '')); } catch (e) { throw new Error('файл прогресса повреждён'); }
+            if (!data || !data.cards) data = { v: 1, cards: {}, days: {} };
+            return { data, sha: j.sha };
+        }
+        async function pushRemote(cfg, obj, sha) {
+            const body = { message: 'Прогресс ' + today(), content: b64enc(canon(obj)), branch: cfg.branch };
+            if (sha) body.sha = sha;
+            const res = await ghFetch(cfg, 'PUT', `/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`, body);
+            if (res.status === 200 || res.status === 201) return true;
+            if (res.status === 409 || res.status === 422) return false;   // файл изменился на другом устройстве — повторяем
+            throw new Error('ошибка записи (' + res.status + ')');
+        }
+
+        async function syncNow() {
+            if (!syncConfigured()) { setSync('off'); return; }
+            if (SYNC.busy) { SYNC.again = true; return; }
+            const cfg = getCfg();
+            SYNC.busy = true; setSync('busy');
+            try {
+                let pushed = false;
+                for (let attempt = 0; attempt < 4 && !pushed; attempt++) {
+                    const remote = await pullRemote(cfg);
+                    const merged = remote.data ? mergeProgress(P, remote.data) : P;
+                    if (canon(merged) !== canon(P)) { P = merged; persistLocal(); if (mode === 'home') renderHome(); }
+                    if (remote.data && canon(merged) === canon(remote.data)) { pushed = true; break; }
+                    pushed = await pushRemote(cfg, merged, remote.sha);
+                }
+                if (!pushed) throw new Error('не удалось записать после нескольких попыток');
+                SYNC.last = nowMs(); setSync('ok');
+            } catch (e) {
+                SYNC.err = String(e && e.message || e); setSync('err');
+            } finally {
+                SYNC.busy = false;
+                if (SYNC.again) { SYNC.again = false; scheduleSync(2000); }
+            }
+        }
+
+        // ══════════════ Окно настроек ══════════════
+        function openSettings() {
+            const cfg = getCfg();
+            document.getElementById('modal').innerHTML = `
+                <h2>☁️ Синхронизация прогресса</h2>
+                <p>Прогресс (когда повторять каждую карточку) сохраняется в вашем репозитории GitHub, в отдельной ветке <b>progress</b>, и подтягивается на всех устройствах. Нужен личный токен GitHub (Settings → Developer settings → Fine-grained tokens): доступ только к этому репозиторию, право <b>Contents: Read and write</b>. Токен хранится только в этом браузере.</p>
+                <label>Репозиторий (владелец/название)</label>
+                <input id="cfgRepo" value="${esc(cfg.owner && cfg.repo ? cfg.owner + '/' + cfg.repo : '')}" placeholder="islamgadzhialiew-pixel/fc-kaggle" autocapitalize="off" autocomplete="off">
+                <label>Токен</label>
+                <input id="cfgToken" type="password" value="${esc(cfg.token)}" placeholder="github_pat_..." autocomplete="off">
+                <div class="modal-btns">
+                    <button class="go-btn" onclick="saveSettings()">Сохранить и синхронизировать</button>
+                    <button class="go-btn secondary" onclick="closeSettings()">Закрыть</button>
+                </div>
+                <div class="modal-status ${syncClass()}" id="modalStatus">${esc(syncText())}</div>
+                <label>Резервная копия вручную</label>
+                <textarea id="cfgBackup" readonly></textarea>
+                <div class="modal-btns">
+                    <button class="go-btn secondary" onclick="copyBackup()">Скопировать прогресс</button>
+                    <button class="go-btn secondary" onclick="importBackup()">Вставить из текста</button>
+                </div>`;
+            document.getElementById('cfgBackup').value = canon(P);
+            document.getElementById('modalOverlay').classList.add('open');
+        }
+        function closeSettings() { document.getElementById('modalOverlay').classList.remove('open'); if (mode === 'home') renderHome(); }
+        function saveSettings() {
+            const rp = (document.getElementById('cfgRepo').value || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').split('/');
+            const cfg = getCfg();
+            cfg.owner = rp[0] || ''; cfg.repo = rp[1] || ''; cfg.token = (document.getElementById('cfgToken').value || '').trim();
+            lsSet(SYNC_CFG_KEY, JSON.stringify(cfg));
+            syncNow();
+        }
+        function copyBackup() {
+            const ta = document.getElementById('cfgBackup'); ta.value = canon(P); ta.readOnly = false; ta.select();
+            try { navigator.clipboard.writeText(ta.value); } catch (e) { document.execCommand('copy'); }
+            ta.readOnly = true;
+            const ms = document.getElementById('modalStatus'); if (ms) ms.textContent = 'Скопировано';
+        }
+        function importBackup() {
+            const text = prompt('Вставьте скопированный текст прогресса:');
+            if (!text) return;
+            try {
+                const d = JSON.parse(text);
+                if (!d || !d.cards || !d.days) throw new Error('bad');
+                P = mergeProgress(P, d); persistLocal(); scheduleSync(500);
+                closeSettings();
+            } catch (e) { alert('Не получилось прочитать текст прогресса'); }
+        }
+
+        // ══════════════ Запуск ══════════════
+        setupGestures();
+        function showFatal(e) {
+            const msg = String(e && e.message || e) + '\n' + String(e && e.stack || '').split('\n').slice(0, 4).join('\n');
+            const h = document.getElementById('home');
+            h.hidden = false;
+            h.innerHTML = '<div class="sec"><h3>Ошибка в приложении</h3><p class="row-sub" style="white-space:pre-wrap;word-break:break-all">' + esc(msg) + '</p></div>';
+        }
+        window.addEventListener('error', (ev) => { if (!document.getElementById('home').innerHTML) showFatal(ev.error || ev.message); });
+        if (groupNames.length > 0) {
+            try {
+                ensureDay();
+                setScreen('home');
+                renderHome();
+            } catch (e) { showFatal(e); }
+            renderSidebar();
+            if (syncConfigured()) setTimeout(syncNow, 600);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') { if (mode === 'home') renderHome(); syncNow(); }
+                else if (syncConfigured()) syncNow();
+            });
+        } else {
+            setScreen('home');
+            document.getElementById('home').innerHTML = '<div class="empty-state">Колоды не найдены.<br>Добавьте CSV файлы в репозиторий и запустите ноутбук заново.</div>';
+        }
+    </script>
+</body>
+</html>
