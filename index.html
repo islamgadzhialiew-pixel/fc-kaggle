@@ -376,9 +376,38 @@
         .speed-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
         .speed-btns { display: flex; gap: 8px; margin-top: 12px; }
 
+
+        /* ── iPhone: шапка не лезет под часы и вырез (запуск с экрана «Домой») ── */
+        .app { padding-top: calc(env(safe-area-inset-top) + 6px); padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+        .standalone .app { padding-top: max(calc(env(safe-area-inset-top) + 6px), 44px); }
+        .top-bar { margin-bottom: 4px; }
+        .sidebar-header { padding-top: calc(16px + env(safe-area-inset-top)); }
+        .sidebar { padding-bottom: env(safe-area-inset-bottom); }
+
+        /* ── Нижняя панель ✕ 🔊 ✓: три колонки, диктор строго по центру ── */
+        .nav-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); gap: 12px; align-items: center; max-width: 460px; margin-left: auto; margin-right: auto; width: 100%; }
+        .nav-row .act { width: 100%; max-width: 150px; flex: none; }
+        .nav-row .act-wrong { justify-self: end; }
+        .nav-row .act-right { justify-self: start; }
+        .speak-wrap { position: relative; width: 72px; height: 72px; flex: none; display: block; }
+        .speak-wrap .act-speak { width: 100%; height: 100%; flex: none; padding: 0; }
+        .rate-chip { left: 50%; right: auto; transform: translateX(-50%); top: -14px; }
+
+        /* ── Верхняя строка карточки: ↶  счёт  🚩 › ── */
+        .card-top-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+        .card-top-row > .mini-btn { justify-self: start; }
+        .top-right { justify-self: end; display: flex; gap: 8px; }
+        .mini-btn.flag { background: rgba(255,90,82,0.14); }
+
+        .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: #2d2d34; color: var(--text-primary);
+            border: 1px solid var(--divider); border-radius: 14px; padding: 10px 14px; font-size: 13px; max-width: 86vw; text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 300; }
+        .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
         @media (max-width: 420px) {
             .rate-btn { font-size: 12px; height: 40px; }
             .rate-row { gap: 6px; }
+            .nav-row { grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr); gap: 10px; }
+            .speak-wrap { width: 66px; height: 66px; }
         }
     </style>
 </head>
@@ -387,6 +416,8 @@
 <script src="data/Арабский.js"></script>
 <script src="data/Китайский.js"></script>
 <script src="data/en_oilgas.js"></script>
+    <script src="data/img_block.js"></script>
+    <script src="data/img_block_auto.js"></script>
 
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
@@ -435,6 +466,7 @@
         // Имена групп и колод приводим к одной форме Unicode (NFC): файлы с Мака
         // дают «й» из двух символов, и без этого прогресс и данные не совпадали бы.
         function nfc(s) { return (s && s.normalize) ? s.normalize('NFC') : s; }
+        try { if (window.navigator.standalone) document.documentElement.classList.add('standalone'); } catch (e) {}
         const ALL_DECKS = {};
         (function () {
             const raw = window.ALL_DECKS || {};
@@ -494,8 +526,30 @@
         });
         const ALL_CARDS = Object.keys(CARD_BY_ID).map(id => CARD_BY_ID[id]);
 
+        // ── Картинки, которые не показываем: список из data/img_block.js (проверено заранее)
+        //    и те, что Ислам сам пометил кнопкой 🚩 (хранится в прогрессе и синхронизируется)
+        //    IMAGE_BLOCKLIST_AUTO пишет сам ноутбук: картинки, которые проверка не пропустила.
+        //    У английского картинок нет совсем. ──
+        const STATIC_BLOCK = new Set();
+        (function () {
+            [window.IMAGE_BLOCKLIST || {}, window.IMAGE_BLOCKLIST_AUTO || {}].forEach(bl => {
+                Object.keys(bl).forEach(g => Object.keys(bl[g] || {}).forEach(d => {
+                    const cards = (ALL_DECKS[nfc(g)] || {})[nfc(d)] || [];
+                    (bl[g][d] || []).forEach(i => { if (cards[i - 1]) STATIC_BLOCK.add(cards[i - 1].id); });
+                }));
+            });
+            ALL_CARDS.forEach(c => { c._img = nfc(c.group) === 'Английский' ? '' : (c.image || ''); });
+        })();
+        function applyImageFlags() {
+            const user = (P && P.noimg) || {};
+            ALL_CARDS.forEach(c => {
+                const f = STATIC_BLOCK.has(c.id) || !!(user[c.id] && user[c.id].v);
+                c.image = f ? '' : c._img;
+            });
+        }
+
         // ══════════════ Прогресс (память браузера + синхронизация) ══════════════
-        let P = { v: 1, cards: {}, days: {}, hidden: {} };
+        let P = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
         let memStore = {};
         function lsGet(k) { try { const v = localStorage.getItem(k); return v === null ? (memStore[k] || null) : v; } catch (e) { return memStore[k] || null; } }
         function lsSet(k, v) { memStore[k] = v; try { localStorage.setItem(k, v); } catch (e) {} }
@@ -508,10 +562,16 @@
 
         // Приводит имена групп и колод в прогрессе к NFC (старые записи могли быть в другой форме)
         function normalizeProgress(o) {
-            const out = { v: 1, cards: {}, days: {}, hidden: {} };
+            const out = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
             Object.keys((o && o.hidden) || {}).forEach(k => {
                 const nk = nfc(k), h = o.hidden[k], cur = out.hidden[nk];
                 if (!cur || (h.t || 0) > (cur.t || 0)) out.hidden[nk] = h;
+            });
+            Object.keys((o && o.noimg) || {}).forEach(id => {
+                const i = id.lastIndexOf('#');
+                const nid = i < 0 ? id : nfc(id.slice(0, i)) + id.slice(i);
+                const h = o.noimg[id], cur = out.noimg[nid];
+                if (!cur || (h.t || 0) > (cur.t || 0)) out.noimg[nid] = h;
             });
             Object.keys((o && o.cards) || {}).forEach(id => {
                 const i = id.lastIndexOf('#');
@@ -532,17 +592,22 @@
                 const raw = lsGet(PROGRESS_KEY);
                 if (raw) { const d = JSON.parse(raw); if (d && d.cards && d.days) return normalizeProgress(d); }
             } catch (e) {}
-            return { v: 1, cards: {}, days: {}, hidden: {} };
+            return { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
         }
         P = loadProgress();
+        applyImageFlags();
 
         function persistLocal() { lsSet(PROGRESS_KEY, JSON.stringify(P)); }
         function saveProgress() { persistLocal(); scheduleSync(15000); }
 
         // Слияние двух копий прогресса: по каждой карточке побеждает более свежая запись
         function mergeProgress(a, b) {
-            const out = { v: 1, cards: {}, days: {}, hidden: {} };
+            const out = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
             [normalizeProgress(a), normalizeProgress(b)].forEach(src => {
+                Object.keys(src.noimg || {}).forEach(id => {
+                    const cur = out.noimg[id], h = src.noimg[id];
+                    if (!cur || (h.t || 0) > (cur.t || 0)) out.noimg[id] = h;
+                });
                 Object.keys(src.hidden || {}).forEach(k => {
                     const cur = out.hidden[k], h = src.hidden[k];
                     if (!cur || (h.t || 0) > (cur.t || 0)) out.hidden[k] = h;
@@ -1000,6 +1065,7 @@
             const card = curCard(), cardEl = document.getElementById('flashcard');
             document.getElementById('deckTitleBar').textContent = session.title;
             const dir = isRTL(card.question) ? 'rtl' : 'ltr', cjk = isCJK(card.question) ? 'cjk' : '';
+            const canFlag = !!card._img && !STATIC_BLOCK.has(card.id);
 
             let topContent;
             if (!card.image) topContent = '';
@@ -1016,7 +1082,10 @@
                 <div class="card-top-row">
                     <button class="mini-btn ${session.history.length ? '' : 'disabled'}" onclick="undoRating()" title="Отменить последнюю оценку">↶</button>
                     <span class="card-counter">${session.pos + 1} из ${session.queue.length}</span>
-                    <button class="mini-btn ${session.pos >= session.queue.length - 1 ? 'disabled' : ''}" onclick="skipCard()" title="Отложить в конец">›</button>
+                    <span class="top-right">
+                        ${canFlag ? `<button class="mini-btn flag" onclick="toggleImageFlag()" title="${card.image ? 'Картинка неверная: скрыть' : 'Вернуть картинку'}">${card.image ? '🚩' : '🖼'}</button>` : ''}
+                        <button class="mini-btn ${session.pos >= session.queue.length - 1 ? 'disabled' : ''}" onclick="skipCard()" title="Отложить в конец">›</button>
+                    </span>
                 </div>
                 <div class="zone zone-top ${card.image ? '' : 'no-img'}" id="zoneTop">
                     <p class="question-text ${cjk}" dir="${dir}">${esc(card.question)}</p>
@@ -1033,6 +1102,26 @@
             rr.innerHTML = answerShown ? rateRowHtml() : '';
             rr.classList.toggle('show', answerShown);
             renderNavRow();
+        }
+
+        let toastTimer = null;
+        function showToast(msg) {
+            let el = document.getElementById('toast');
+            if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+            el.textContent = msg; el.classList.add('show');
+            clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+        }
+        function toggleImageFlag() {
+            if (!session || mode !== 'card') return;
+            const card = curCard();
+            if (!card._img || STATIC_BLOCK.has(card.id)) return;
+            const hide = !!card.image;
+            P.noimg = P.noimg || {};
+            P.noimg[card.id] = { v: hide, t: nowMs() };
+            applyImageFlags(); saveProgress();
+            if (hide) imageShown = false;
+            renderCard(false);
+            showToast(hide ? 'Картинка скрыта и больше не покажется. Вернуть: кнопка 🖼 вверху.' : 'Картинка снова показывается.');
         }
 
         function renderNavRow() {
@@ -1263,7 +1352,7 @@
                 for (let attempt = 0; attempt < 4 && !pushed; attempt++) {
                     const remote = await pullRemote(cfg);
                     const merged = remote.data ? mergeProgress(P, remote.data) : P;
-                    if (canon(merged) !== canon(P)) { P = merged; persistLocal(); if (mode === 'home') renderHome(); }
+                    if (canon(merged) !== canon(P)) { P = merged; persistLocal(); applyImageFlags(); if (mode === 'home') renderHome(); }
                     if (remote.data && canon(merged) === canon(remote.data)) { pushed = true; break; }
                     pushed = await pushRemote(cfg, merged, remote.sha);
                 }
@@ -1321,7 +1410,7 @@
             try {
                 const d = JSON.parse(text);
                 if (!d || !d.cards || !d.days) throw new Error('bad');
-                P = mergeProgress(P, d); persistLocal(); scheduleSync(500);
+                P = mergeProgress(P, d); persistLocal(); applyImageFlags(); scheduleSync(500);
                 closeSettings();
             } catch (e) { alert('Не получилось прочитать текст прогресса'); }
         }
