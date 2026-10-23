@@ -413,8 +413,9 @@
 </head>
 <body>
     <script src="data/Английский.js"></script>
-        <script src="data/Арабский.js"></script>
-        <script src="data/Китайский.js"></script>
+    <script src="data/Арабский.js"></script>
+    <script src="data/Китайский.js"></script>
+    <script src="data/en_oilgas.js"></script>
     <script src="data/img_block.js"></script>
     <script src="data/img_block_auto.js"></script>
 
@@ -485,6 +486,9 @@
         const AGAIN_GAP = 4;                                           // «Снова» вернётся через столько карточек
         const DAY_START_HOUR = 4;                                      // учебный день начинается в 4 утра
         const PROGRESS_KEY = 'fc_progress_v1';
+        // Курс начат заново: всё, что оценено до этой даты, не считается (колоды снова идут с «Колоды 1»).
+        const COURSE_START = window.__courseStart || '2026-10-24';
+        const PASSES = 3;                                              // проходов новой колоды в день: сразу, ещё раз, вечером
         const SYNC_CFG_KEY = 'fc_sync_cfg_v1';
 
         function nowMs() { return window.__fakeNow || Date.now(); }
@@ -572,13 +576,16 @@
                 const h = o.noimg[id], cur = out.noimg[nid];
                 if (!cur || (h.t || 0) > (cur.t || 0)) out.noimg[nid] = h;
             });
+            const epochT = parseDay(COURSE_START).getTime();
             Object.keys((o && o.cards) || {}).forEach(id => {
                 const i = id.lastIndexOf('#');
                 const nid = i < 0 ? id : nfc(id.slice(0, i)) + id.slice(i);
                 const c = o.cards[id], cur = out.cards[nid];
+                if ((c.t || 0) < epochT) return;            // оценка до начала нового курса — забываем
                 if (!cur || (c.t || 0) > (cur.t || 0)) out.cards[nid] = c;
             });
             Object.keys((o && o.days) || {}).forEach(ds => {
+                if (ds < COURSE_START) return;
                 const d = Object.assign({}, o.days[ds]);
                 d.new = (d.new || []).map(x => ({ g: nfc(x.g), d: nfc(x.d) }));
                 out.days[ds] = d;
@@ -619,7 +626,9 @@
                     const cur = out.days[ds], d = src.days[ds];
                     if (!cur) { out.days[ds] = JSON.parse(JSON.stringify(d)); return; }
                     const win = (d.t || 0) > (cur.t || 0) ? d : cur;
-                    out.days[ds] = Object.assign({}, win, { n: Math.max(cur.n || 0, d.n || 0), ms: Math.max(cur.ms || 0, d.ms || 0) });
+                    const reps = Object.assign({}, cur.reps || {});
+                    Object.keys(d.reps || {}).forEach(k => { reps[k] = Math.max(reps[k] || 0, d.reps[k]); });
+                    out.days[ds] = Object.assign({}, win, { n: Math.max(cur.n || 0, d.n || 0), ms: Math.max(cur.ms || 0, d.ms || 0), reps });
                 });
             });
             return out;
@@ -640,7 +649,8 @@
             }
             if (!isNew && !due) return null;   // повтор «не по графику» срок вперёд не двигает
             const cur = isNew ? -1 : st.s;
-            const ns = Math.min(LADDER.length - 1, r === 'good' ? Math.max(cur + 1, 1) : Math.max(cur + 2, 2));
+            // Новая карточка: «Хорошо» — повтор завтра, «Легко» — через 3 дня. Дальше: 3 дня, неделя и так далее.
+            const ns = Math.min(LADDER.length - 1, isNew ? (r === 'good' ? 0 : 1) : (r === 'good' ? cur + 1 : cur + 2));
             return { s: ns, d: addDays(td, LADDER[ns]), lapse: false };
         }
 
@@ -709,8 +719,8 @@
             const td = today();
             if (!P.days[td]) {
                 const sunday = weekdayOf(td) === 0;
-                const pick = sunday ? { chosen: [], next: lastPointer(td) } : pickNewDecks(NEW_DECKS_PER_DAY, lastPointer(td));
-                P.days[td] = { new: pick.chosen, next: pick.next, n: 0, ms: 0, t: nowMs() };
+                const pick = (sunday || td < COURSE_START) ? { chosen: [], next: lastPointer(td) } : pickNewDecks(NEW_DECKS_PER_DAY, lastPointer(td));
+                P.days[td] = { new: pick.chosen, next: pick.next, n: 0, ms: 0, reps: {}, t: nowMs() };
                 saveProgress();
             }
             return P.days[td];
@@ -744,6 +754,17 @@
 
         function startNewDeck(group, deck) {
             startSession('new', group + ' · ' + deck, shuffleArr(newCardsOf(group, deck)));
+            if (session) session.deckRef = { g: group, d: deck, pass: 1 };
+        }
+        // Проход 2 (сразу) и 3 (вечером): вся колода ещё раз, расписание не сдвигается
+        function startDeckPass(group, deck, pass) {
+            const names = { 2: 'второй проход', 3: 'вечерний проход' };
+            startSession('practice', group + ' · ' + deck + ' · ' + (names[pass] || 'повтор'), shuffleArr(DECK_CARDS[deckKey(group, deck)].slice()));
+            if (session) session.deckRef = { g: group, d: deck, pass };
+        }
+        function passesDone(day, g, d) {
+            const done = (day.reps && day.reps[deckKey(g, d)]) || 0;
+            return Math.max(done, newCardsOf(g, d).length === 0 ? 1 : 0);
         }
         function startReview(group) {
             startSession('review', (group || 'Все языки') + ' · повтор', dueCards(group).slice(0, REVIEW_BATCH));
@@ -811,6 +832,12 @@
         }
 
         function finishSession() {
+            if (session.deckRef) {
+                const day = ensureDay(), k = deckKey(session.deckRef.g, session.deckRef.d);
+                day.reps = day.reps || {};
+                day.reps[k] = Math.max(day.reps[k] || 0, session.deckRef.pass);
+                day.t = nowMs(); saveProgress();
+            }
             mode = 'results'; onResultsScreen = true;
             renderResults();
             syncNow();
@@ -984,21 +1011,32 @@
             const parts = [];
             const dd = parseDay(td);
             parts.push(`<div class="home-date">${WD[wd]}, ${dd.getDate()} ${MON[dd.getMonth()]}</div>`);
+            if (td < COURSE_START) { const sd = parseDay(COURSE_START); parts.push(`<div class="home-banner">Новый курс начинается ${sd.getDate()} ${MON[sd.getMonth()]}: каждый язык снова с «Колоды 1». До этого дня ничего не засчитывается.</div>`); }
             if (sunday) parts.push(`<div class="home-banner">Воскресенье: новых колод нет, только повторение. Утром час и вечером час.</div>`);
 
             // новые колоды
             const newDecks = day.new.filter(x => DECK_CARDS[deckKey(x.g, x.d)] && !isHidden(x.g, x.d));
             let newHtml = '';
             if (newDecks.length === 0) {
-                newHtml = `<div class="row-sub">${sunday ? 'Сегодня без новых колод.' : 'Новых колод больше нет. Пора готовить следующий набор.'}</div>`;
+                newHtml = `<div class="row-sub">${td < COURSE_START ? 'Новые колоды начнутся в первый день курса.' : sunday ? 'Сегодня без новых колод.' : 'Новых колод больше нет. Пора готовить следующий набор.'}</div>`;
             } else {
                 newHtml = newDecks.map(x => {
                     const total = DECK_CARDS[deckKey(x.g, x.d)] ? DECK_CARDS[deckKey(x.g, x.d)].length : 0;
                     const left = DECK_CARDS[deckKey(x.g, x.d)] ? newCardsOf(x.g, x.d).length : 0;
-                    const done = left === 0;
-                    const btn = done ? `<span class="done-mark">✓ пройдена</span>`
-                        : `<button class="go-btn" data-g="${esc(x.g)}" data-d="${esc(x.d)}" onclick="startNewDeck(this.dataset.g, this.dataset.d)">${left === total ? 'Начать' : 'Продолжить'}</button>`;
-                    return `<div class="row"><div class="row-main"><div class="row-title">${esc(deckLabel(x.g, x.d))}</div><div class="row-sub">${left === total ? total + ' новых карточек' : 'осталось ' + left + ' из ' + total}</div></div>${btn}</div>`;
+                    const pd = passesDone(day, x.g, x.d);
+                    const at = `data-g="${esc(x.g)}" data-d="${esc(x.d)}"`;
+                    let btn, sub;
+                    if (pd === 0) {
+                        btn = `<button class="go-btn" ${at} onclick="startNewDeck(this.dataset.g, this.dataset.d)">${left === total ? 'Начать' : 'Продолжить'}</button>`;
+                        sub = left === total ? total + ' новых карточек · проход 1 из ' + PASSES : 'осталось ' + left + ' из ' + total;
+                    } else if (pd < PASSES) {
+                        btn = `<button class="go-btn" ${at} onclick="startDeckPass(this.dataset.g, this.dataset.d, ${pd + 1})">${pd === 1 ? 'Ещё раз (2)' : 'Вечером (3)'}</button>`;
+                        sub = 'пройдено ' + pd + ' из ' + PASSES + (pd === 1 ? ' · сразу повторите' : ' · третий раз вечером');
+                    } else {
+                        btn = `<span class="done-mark">✓ 3 из 3</span>`;
+                        sub = 'все проходы сделаны, завтра повтор';
+                    }
+                    return `<div class="row"><div class="row-main"><div class="row-title">${esc(deckLabel(x.g, x.d))}</div><div class="row-sub">${sub}</div></div>${btn}</div>`;
                 }).join('');
             }
             const canExtra = !sunday && newDecks.length > 0 && newDecks.every(x => newCardsOf(x.g, x.d).length === 0) && nextNewDeckAvailable(day);
@@ -1158,6 +1196,14 @@
             const stat = (n, label, color) => `<div class="results-stat"><div class="results-stat-number" style="color:var(${color})">${n}</div><div class="results-stat-label">${label}</div></div>`;
             const cardEl = document.getElementById('flashcard');
             cardEl.style.transition = ''; cardEl.style.transform = '';
+            let passHtml = '';
+            const dr = session.deckRef;
+            if (dr && dr.pass < PASSES && session.pos >= session.queue.length) {
+                const jsArgs = JSON.stringify([dr.g, dr.d, dr.pass + 1]).slice(1, -1).replace(/"/g, '&quot;');
+                passHtml = dr.pass === 1
+                    ? `<button class="reset-btn" onclick="startDeckPass(${jsArgs})">🔁 Сразу ещё раз (проход 2 из ${PASSES})</button>`
+                    : `<div class="results-sub" style="text-align:center;color:var(--text-secondary);font-size:13px">Третий проход — вечером.</div><button class="reset-btn" style="background:#2d2d34;color:var(--text-primary)" onclick="startDeckPass(${jsArgs})">🌙 Третий проход сейчас</button>`;
+            }
             cardEl.innerHTML = `
                 <div class="results-wrap">
                     <div class="results-title">🎉 Готово: ${esc(session.title)}</div>
@@ -1165,6 +1211,7 @@
                         ${stat(c.again, 'Снова', '--c-again')}${stat(c.hard, 'Трудно', '--c-hard')}${stat(c.good, 'Хорошо', '--c-good')}${stat(c.easy, 'Легко', '--c-easy')}
                     </div>
                     <div class="results-sub" style="text-align:center;color:var(--text-secondary);font-size:13px">Оценок за сессию: ${total}. К завтрашнему дню на повтор: ${tomorrowDue}.</div>
+                    ${passHtml}
                     <button class="reset-btn" onclick="goHome()">🏠 На главный экран</button>
                     <button class="reset-btn" style="background:#2d2d34;color:var(--text-primary)" onclick="undoRating()">↶ Отменить последнюю оценку</button>
                 </div>`;
