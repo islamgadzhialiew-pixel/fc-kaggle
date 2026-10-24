@@ -1085,7 +1085,7 @@
             }).join('')}</div></div>`);
 
             const ms = day.ms || 0;
-            parts.push(`<div class="home-foot"><span>Сегодня: ${day.n || 0} оценок, ${Math.round(ms / 60000)} мин</span><span class="${syncClass()}" id="syncLabel">${syncText()}</span></div>`);
+            parts.push(`<div class="home-foot"><span>Сегодня: ${day.n || 0} оценок, ${Math.round(ms / 60000)} мин</span><span style="opacity:.5">версия 9</span><span class="${syncClass()}" id="syncLabel">${syncText()}</span></div>`);
             parts.push(`<div class="home-foot"><button onclick="openSidebar()">📚 Все колоды</button><button onclick="openSettings()">⚙︎ Синхронизация</button></div>`);
             document.getElementById('home').innerHTML = parts.join('');
         }
