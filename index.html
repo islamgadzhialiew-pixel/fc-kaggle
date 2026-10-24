@@ -560,7 +560,7 @@
         }
 
         // ══════════════ Прогресс (память браузера + синхронизация) ══════════════
-        let P = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
+        let P = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {}, engShift: 1 };
         let memStore = {};
         function lsGet(k) { try { const v = localStorage.getItem(k); return v === null ? (memStore[k] || null) : v; } catch (e) { return memStore[k] || null; } }
         function lsSet(k, v) { memStore[k] = v; try { localStorage.setItem(k, v); } catch (e) {} }
@@ -573,9 +573,15 @@
 
         // Приводит имена групп и колод в прогрессе к NFC (старые записи могли быть в другой форме)
         function normalizeProgress(o) {
-            const out = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
+            const out = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {}, engShift: 1 };
             Object.keys((o && o.hidden) || {}).forEach(k => {
-                const nk = nfc(k), h = o.hidden[k], cur = out.hidden[nk];
+                let nk = nfc(k);
+                // «Убрать колоду» у английского хранилось под старыми номерами: после сдвига на 1 прежняя «Колода 1» (убрана) пропадает, остальные сдвигаются
+                if (!(o && o.engShift)) {
+                    const m = /^Английский::Колода (\d+)$/.exec(nk);
+                    if (m) { if (+m[1] <= 1) return; nk = 'Английский::Колода ' + (+m[1] - 1); }
+                }
+                const h = o.hidden[k], cur = out.hidden[nk];
                 if (!cur || (h.t || 0) > (cur.t || 0)) out.hidden[nk] = h;
             });
             Object.keys((o && o.noimg) || {}).forEach(id => {
@@ -597,7 +603,7 @@
                 const d = Object.assign({}, o.days[ds]);
                 d.new = (d.new || []).map(x => ({ g: nfc(x.g), d: nfc(x.d) }));
                 // План дня, сохранённый до сдвига английских колод, неверен для английского: убираем его оттуда
-                if (!d.pv) { if (d.new.some(x => x.g === 'Английский')) d.next = 2; d.new = d.new.filter(x => x.g !== 'Английский'); d.pv = 8; }
+                if ((d.pv || 0) < 9) { if (d.new.some(x => x.g === 'Английский')) d.next = 2; d.new = d.new.filter(x => x.g !== 'Английский'); d.pv = 9; }
                 out.days[ds] = d;
             });
             return out;
@@ -608,7 +614,7 @@
                 const raw = lsGet(PROGRESS_KEY);
                 if (raw) { const d = JSON.parse(raw); if (d && d.cards && d.days) return normalizeProgress(d); }
             } catch (e) {}
-            return { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
+            return { v: 1, cards: {}, days: {}, hidden: {}, noimg: {}, engShift: 1 };
         }
         P = loadProgress();
         applyImageFlags();
@@ -618,7 +624,7 @@
 
         // Слияние двух копий прогресса: по каждой карточке побеждает более свежая запись
         function mergeProgress(a, b) {
-            const out = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {} };
+            const out = { v: 1, cards: {}, days: {}, hidden: {}, noimg: {}, engShift: 1 };
             [normalizeProgress(a), normalizeProgress(b)].forEach(src => {
                 Object.keys(src.noimg || {}).forEach(id => {
                     const cur = out.noimg[id], h = src.noimg[id];
@@ -731,7 +737,7 @@
             if (!P.days[td]) {
                 const sunday = weekdayOf(td) === 0;
                 const pick = (sunday || td < COURSE_START) ? { chosen: [], next: lastPointer(td) } : pickNewDecks(NEW_DECKS_PER_DAY, lastPointer(td));
-                P.days[td] = { new: pick.chosen, next: pick.next, n: 0, ms: 0, reps: {}, pv: 8, t: nowMs() };
+                P.days[td] = { new: pick.chosen, next: pick.next, n: 0, ms: 0, reps: {}, pv: 9, t: nowMs() };
                 saveProgress();
             }
             return P.days[td];
@@ -1085,7 +1091,7 @@
             }).join('')}</div></div>`);
 
             const ms = day.ms || 0;
-            parts.push(`<div class="home-foot"><span>Сегодня: ${day.n || 0} оценок, ${Math.round(ms / 60000)} мин</span><span style="opacity:.5">версия 9</span><span class="${syncClass()}" id="syncLabel">${syncText()}</span></div>`);
+            parts.push(`<div class="home-foot"><span>Сегодня: ${day.n || 0} оценок, ${Math.round(ms / 60000)} мин</span><span style="opacity:.5">версия 10</span><span class="${syncClass()}" id="syncLabel">${syncText()}</span></div>`);
             parts.push(`<div class="home-foot"><button onclick="openSidebar()">📚 Все колоды</button><button onclick="openSettings()">⚙︎ Синхронизация</button></div>`);
             document.getElementById('home').innerHTML = parts.join('');
         }
