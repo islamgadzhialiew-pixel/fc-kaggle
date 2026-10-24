@@ -413,8 +413,9 @@
 </head>
 <body>
     <script src="data/Английский.js"></script>
-        <script src="data/Арабский.js"></script>
-        <script src="data/Китайский.js"></script>
+    <script src="data/Арабский.js"></script>
+    <script src="data/Китайский.js"></script>
+    <script src="data/en_oilgas.js"></script>
     <script src="data/img_block.js"></script>
     <script src="data/img_block_auto.js"></script>
 
@@ -627,20 +628,21 @@
                     const win = (d.t || 0) > (cur.t || 0) ? d : cur;
                     const reps = Object.assign({}, cur.reps || {});
                     Object.keys(d.reps || {}).forEach(k => { reps[k] = Math.max(reps[k] || 0, d.reps[k]); });
-                    out.days[ds] = Object.assign({}, win, { n: Math.max(cur.n || 0, d.n || 0), ms: Math.max(cur.ms || 0, d.ms || 0), reps });
+                    const redo = Object.assign({}, cur.redo || {});
+                    Object.keys(d.redo || {}).forEach(k => { redo[k] = Array.from(new Set((redo[k] || []).concat(d.redo[k]))); });
+                    out.days[ds] = Object.assign({}, win, { n: Math.max(cur.n || 0, d.n || 0), ms: Math.max(cur.ms || 0, d.ms || 0), reps, redo });
                 });
             });
             return out;
         }
 
         // ══════════════ Правила повторения ══════════════
-        // r: 'again' | 'hard' | 'good' | 'easy'. forced — карточка уже получала «Снова» в этой сессии.
+        // r: 'again' | 'hard' | 'good' | 'easy'.
         // Возвращает новое состояние {s: ступень, d: дата повтора, lapse} или null (расписание не меняется).
         function computeOutcome(st, r, forced, td) {
             const isNew = !st || !st.d;
             const due = !isNew && st.d <= td;
-            if (r === 'again') return null;
-            if (forced) r = 'hard';
+            if (r === 'again') r = 'hard';      // «Снова» в расписании = «Трудно»: завтра повтор, внутри колоды карточка не возвращается
             if (r === 'hard') {
                 const tomorrow = addDays(td, 1);
                 if (!isNew && !due && st.d <= tomorrow) return null;
@@ -743,7 +745,7 @@
 
         function startSession(kind, title, cards) {
             if (!cards.length) return;
-            session = { kind, title, queue: cards.slice(), pos: 0, again: new Set(), counts: { again: 0, hard: 0, good: 0, easy: 0 }, history: [] };
+            session = { kind, title, queue: cards.slice(), pos: 0, again: new Set(), redo: new Set(), counts: { again: 0, hard: 0, good: 0, easy: 0 }, history: [] };
             lastActionMs = nowMs();
             closeSidebar();
             showCard();
@@ -756,14 +758,19 @@
             if (session) session.deckRef = { g: group, d: deck, pass: 1 };
         }
         // Проход 2 (сразу) и 3 (вечером): вся колода ещё раз, расписание не сдвигается
+        // Проход 2: только карточки, которые в первом проходе получили «Снова». Проход 3 (вечером): вся колода.
+        function redoIds(day, g, d) { return ((day.redo && day.redo[deckKey(g, d)]) || []).filter(id => CARD_BY_ID[id]); }
         function startDeckPass(group, deck, pass) {
             const names = { 2: 'второй проход', 3: 'вечерний проход' };
-            startSession('practice', group + ' · ' + deck + ' · ' + (names[pass] || 'повтор'), shuffleArr(DECK_CARDS[deckKey(group, deck)].slice()));
+            const all = DECK_CARDS[deckKey(group, deck)];
+            const cards = pass === 2 ? redoIds(ensureDay(), group, deck).map(id => CARD_BY_ID[id]) : all.slice();
+            startSession('practice', group + ' · ' + deck + ' · ' + (names[pass] || 'повтор'), shuffleArr(cards.length ? cards : all.slice()));
             if (session) session.deckRef = { g: group, d: deck, pass };
         }
         function passesDone(day, g, d) {
-            const done = (day.reps && day.reps[deckKey(g, d)]) || 0;
-            return Math.max(done, newCardsOf(g, d).length === 0 ? 1 : 0);
+            let done = Math.max((day.reps && day.reps[deckKey(g, d)]) || 0, newCardsOf(g, d).length === 0 ? 1 : 0);
+            if (done === 1 && !redoIds(day, g, d).length) done = 2;      // всё вспомнил — второй проход не нужен
+            return done;
         }
         function startReview(group) {
             startSession('review', (group || 'Все языки') + ' · повтор', dueCards(group).slice(0, REVIEW_BATCH));
@@ -788,13 +795,9 @@
 
             if (r === 'again') {
                 session.again.add(card.id);
-                const at = Math.min(session.queue.length, session.pos + 1 + AGAIN_GAP);
-                session.queue.splice(at, 0, card);
-                entry.inserted = at;
-            } else {
-                const out = computeOutcome(before, r, session.again.has(card.id), td);
-                if (out) applyOutcome(card, out);
+                if (session.deckRef && session.deckRef.pass === 1) { session.redo.add(card.id); }
             }
+            { const out = computeOutcome(before, r, false, td); if (out) applyOutcome(card, out); }
             session.counts[r]++;
             // время занятий: пауза между оценками считается не больше минуты
             const now = nowMs();
@@ -811,10 +814,8 @@
         function undoRating() {
             if (!session || !session.history.length || ratingInProgress) return;
             const e = session.history.pop();
-            if (e.r === 'again') {
-                session.queue.splice(e.inserted, 1);
-                if (!e.wasAgain) session.again.delete(e.id);
-            } else if (e.before) P.cards[e.id] = Object.assign({}, e.before, { t: nowMs() });
+            if (e.r === 'again' && !e.wasAgain) { session.again.delete(e.id); session.redo.delete(e.id); }
+            if (e.before) P.cards[e.id] = Object.assign({}, e.before, { t: nowMs() });
             else P.cards[e.id] = { s: -1, d: '', i: '', l: 0, r: 0, t: nowMs() };
             session.counts[e.r]--;
             const day = P.days[today()];
@@ -835,6 +836,7 @@
                 const day = ensureDay(), k = deckKey(session.deckRef.g, session.deckRef.d);
                 day.reps = day.reps || {};
                 day.reps[k] = Math.max(day.reps[k] || 0, session.deckRef.pass);
+                if (session.deckRef.pass === 1) { day.redo = day.redo || {}; day.redo[k] = Array.from(session.redo); }
                 day.t = nowMs(); saveProgress();
             }
             mode = 'results'; onResultsScreen = true;
@@ -1030,7 +1032,7 @@
                         sub = left === total ? total + ' новых карточек · проход 1 из ' + PASSES : 'осталось ' + left + ' из ' + total;
                     } else if (pd < PASSES) {
                         btn = `<button class="go-btn" ${at} onclick="startDeckPass(this.dataset.g, this.dataset.d, ${pd + 1})">${pd === 1 ? 'Ещё раз (2)' : 'Вечером (3)'}</button>`;
-                        sub = 'пройдено ' + pd + ' из ' + PASSES + (pd === 1 ? ' · сразу повторите' : ' · третий раз вечером');
+                        sub = pd === 1 ? 'сразу ещё раз: только непонятные, ' + redoIds(day, x.g, x.d).length + ' карт.' : 'вечером: вся колода целиком, ' + total + ' карт.';
                     } else {
                         btn = `<span class="done-mark">✓ 3 из 3</span>`;
                         sub = 'все проходы сделаны, завтра повтор';
@@ -1087,10 +1089,11 @@
         }
 
         function rateRowHtml() {
-            const card = curCard(), st = P.cards[card.id] || null, td = today(), forced = session.again.has(card.id);
+            const card = curCard(), st = P.cards[card.id] || null, td = today();
             const lab = (r) => {
-                if (r === 'again') return 'сейчас';
-                const out = computeOutcome(st, r, forced, td);
+                const sess1 = session.deckRef && session.deckRef.pass === 1;
+                if (r === 'again' && sess1) return 'сразу ещё раз';
+                const out = computeOutcome(st, r, false, td);
                 return out ? ivLabel(diffDays(td, out.d)) : '✓';
             };
             const btn = (r, name) => `<button class="rate-btn ${r}" onclick="rate('${r}')">${name}<small>${lab(r)}</small></button>`;
@@ -1198,10 +1201,14 @@
             let passHtml = '';
             const dr = session.deckRef;
             if (dr && dr.pass < PASSES && session.pos >= session.queue.length) {
+                const nRedo = dr.pass === 1 ? redoIds(ensureDay(), dr.g, dr.d).length : 0;
                 const jsArgs = JSON.stringify([dr.g, dr.d, dr.pass + 1]).slice(1, -1).replace(/"/g, '&quot;');
-                passHtml = dr.pass === 1
-                    ? `<button class="reset-btn" onclick="startDeckPass(${jsArgs})">🔁 Сразу ещё раз (проход 2 из ${PASSES})</button>`
-                    : `<div class="results-sub" style="text-align:center;color:var(--text-secondary);font-size:13px">Третий проход — вечером.</div><button class="reset-btn" style="background:#2d2d34;color:var(--text-primary)" onclick="startDeckPass(${jsArgs})">🌙 Третий проход сейчас</button>`;
+                const jsArgs3 = JSON.stringify([dr.g, dr.d, 3]).slice(1, -1).replace(/"/g, '&quot;');
+                passHtml = dr.pass === 1 && nRedo
+                    ? `<button class="reset-btn" onclick="startDeckPass(${jsArgs})">🔁 Сразу ещё раз: только непонятные (${nRedo})</button>`
+                    : dr.pass === 1
+                    ? `<div class="results-sub" style="text-align:center;color:var(--text-secondary);font-size:13px">Всё вспомнили, второй проход не нужен. Вся колода — вечером.</div><button class="reset-btn" style="background:#2d2d34;color:var(--text-primary)" onclick="startDeckPass(${jsArgs3})">🌙 Вечерний проход сейчас</button>`
+                    : `<div class="results-sub" style="text-align:center;color:var(--text-secondary);font-size:13px">Вся колода — вечером.</div><button class="reset-btn" style="background:#2d2d34;color:var(--text-primary)" onclick="startDeckPass(${jsArgs})">🌙 Вечерний проход сейчас</button>`;
             }
             cardEl.innerHTML = `
                 <div class="results-wrap">
