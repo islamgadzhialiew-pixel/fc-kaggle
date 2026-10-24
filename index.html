@@ -473,7 +473,15 @@
             Object.keys(raw).forEach(g => {
                 const ng = nfc(g);
                 ALL_DECKS[ng] = ALL_DECKS[ng] || {};
-                Object.keys(raw[g]).forEach(d => { ALL_DECKS[ng][nfc(d)] = raw[g][d]; });
+                Object.keys(raw[g]).forEach(d => {
+                    let nd = nfc(d);
+                    // Английский: исходная «Колода 1» убрана совсем, остальные сдвинуты на 1 (2 → 1, 3 → 2 …)
+                    if (ng === 'Английский') {
+                        const m = /^Колода (\d+)$/.exec(nd);
+                        if (m) { if (+m[1] <= 1) return; nd = 'Колода ' + (+m[1] - 1); }
+                    }
+                    ALL_DECKS[ng][nd] = raw[g][d];
+                });
             });
         })();
         const groupNames = Object.keys(ALL_DECKS);
